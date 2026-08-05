@@ -1,0 +1,624 @@
+import { Notice, TFile, normalizePath } from "obsidian";
+import type SybylPlugin from "./main";
+import { getSelection, insertBelowSelection, isInsideCodeBlock } from "./editor";
+import { removeSourceRef, upsertSourceRef, writeFrontMatterKey } from "./frontmatter";
+import {
+  formatAdventureSeed,
+  formatAskOracle,
+  formatCharacter,
+  formatDeclareAction,
+  formatExpandScene,
+  formatInterpretOracle,
+  formatStartScene,
+  formatSuggestConsequence,
+  LonelogFormatOptions
+} from "./lonelog/formatter";
+import { parseLonelogContext, serializeContext } from "./lonelog/parser";
+import { ManageSourcesModal, openInputModal, pickLocalFile, pickSourceOrigin, pickSourceRef, pickVaultFile } from "./modals";
+import { resolveSourcesForRequest } from "./sourceUtils";
+import { NoteFrontMatter, SourceRef, SybylSettings } from "./types";
+
+function isLonelogActive(settings: SybylSettings, fm: NoteFrontMatter): boolean {
+  return fm.lonelog ?? settings.lonelogMode;
+}
+
+function lonelogOpts(settings: SybylSettings, noWrap = false): LonelogFormatOptions {
+  return { wrapInCodeBlock: !noWrap && (settings.lonelogWrapCodeBlock ?? true) };
+}
+
+function genericBlockquote(label: string, text: string): string {
+  return `> [${label}] ${text.trim().replace(/\n/g, "\n> ")}`;
+}
+
+function inferMimeType(file: TFile | File): string {
+  const name = "path" in file ? file.path : file.name;
+  return name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "text/plain";
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseLonelogOracleResponse(text: string): { result: string; interpretation: string } {
+  const lines = text
+    .replace(/^>\s*/gm, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const result = lines.find((line) => line.startsWith("->"))?.replace(/^->\s*/, "") ?? "Unclear";
+  const interpretation = lines.filter((line) => !line.startsWith("->")).join("\n");
+  return { result, interpretation };
+}
+
+async function addSourceToNote(plugin: SybylPlugin, file: TFile): Promise<void> {
+  const origin = await pickSourceOrigin(plugin.app);
+  if (!origin) return;
+
+  if (origin === "vault") {
+    const vaultFile = await pickVaultFile(plugin.app, "Choose a vault file");
+    if (!vaultFile) return;
+    const ref: SourceRef = {
+      label: vaultFile.basename,
+      mime_type: inferMimeType(vaultFile),
+      vault_path: vaultFile.path
+    };
+    await upsertSourceRef(plugin.app, file, ref);
+    new Notice(`Source added: ${vaultFile.path}`);
+    return;
+  }
+
+  // External file — import into vault
+  const localFile = await pickLocalFile();
+  if (!localFile) return;
+
+  const buffer = await localFile.arrayBuffer();
+  const parentDir = file.parent?.path ?? "";
+  const sourcesFolder = normalizePath(parentDir ? `${parentDir}/sources` : "sources");
+
+  if (!plugin.app.vault.getAbstractFileByPath(sourcesFolder)) {
+    await plugin.app.vault.createFolder(sourcesFolder);
+  }
+
+  const targetPath = normalizePath(`${sourcesFolder}/${localFile.name}`);
+  const existing = plugin.app.vault.getAbstractFileByPath(targetPath);
+  if (existing instanceof TFile) {
+    await plugin.app.vault.modifyBinary(existing, buffer);
+  } else {
+    await plugin.app.vault.createBinary(targetPath, buffer);
+  }
+
+  const ref: SourceRef = {
+    label: localFile.name.replace(/\.[^.]+$/, ""),
+    mime_type: inferMimeType(localFile),
+    vault_path: targetPath
+  };
+  await upsertSourceRef(plugin.app, file, ref);
+  new Notice(`Source imported: ${targetPath}`);
+}
+
+async function manageSources(plugin: SybylPlugin): Promise<void> {
+  const context = await plugin.getActiveNoteContext();
+  if (!context?.view.file) {
+    return;
+  }
+  new ManageSourcesModal(
+    plugin.app,
+    context.fm.sources ?? [],
+    async (ref) => removeSourceRef(plugin.app, context.view.file!, ref)
+  ).open();
+}
+
+async function runGeneration(
+  plugin: SybylPlugin,
+  userMessage: string,
+  formatter: (text: string, fm: NoteFrontMatter, insideCodeBlock: boolean) => string,
+  maxOutputTokens = 512,
+  placement?: "cursor" | "end-of-note" | "below-selection"
+): Promise<void> {
+  const context = await plugin.getActiveNoteContext();
+  if (!context) {
+    return;
+  }
+
+  try {
+    const editor = context.view.editor;
+    let targetLine: number;
+    if (placement === "below-selection") {
+      targetLine = editor.listSelections()[0]?.head.line ?? editor.getCursor().line;
+    } else if (placement === "end-of-note") {
+      targetLine = editor.lastLine();
+    } else {
+      targetLine = editor.getCursor().line;
+    }
+    const insideCodeBlock = isInsideCodeBlock(editor, targetLine);
+    const response = await plugin.requestGeneration(context.fm, context.noteBody, userMessage, maxOutputTokens);
+    const formatted = formatter(response.text, context.fm, insideCodeBlock);
+    if (placement === "below-selection") {
+      insertBelowSelection(editor, formatted);
+    } else {
+      plugin.insertText(context.view, formatted, placement);
+    }
+    plugin.maybeInsertTokenComment(context.view, response);
+  } catch (error) {
+    new Notice(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(error);
+  }
+}
+
+export function registerAllCommands(plugin: SybylPlugin): void {
+  plugin.addCommand({
+    id: "sybyl:insert-frontmatter",
+    name: "Insert Note Frontmatter",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context?.view.file) {
+        return;
+      }
+      const values = await openInputModal(plugin.app, "Insert Sybyl Frontmatter", [
+        { key: "ruleset", label: "Game / ruleset", placeholder: "Ironsworn" },
+        { key: "genre", label: "Genre", optional: true, placeholder: "Dark fantasy / survival" },
+        { key: "pcs", label: "PC", optional: true, placeholder: "Kira Voss, dangerous rank, vow: recover the relic" },
+        { key: "tone", label: "Tone", optional: true, placeholder: "Gritty, hopeful" },
+        { key: "language", label: "Language", optional: true, placeholder: "Leave blank for auto-detect" }
+      ]);
+      if (!values) {
+        return;
+      }
+      if (!values.ruleset) {
+        new Notice("Ruleset is required.");
+        return;
+      }
+      await plugin.app.fileManager.processFrontMatter(context.view.file, (fm) => {
+        fm["ruleset"] = values.ruleset;
+        fm["provider"] = fm["provider"] ?? plugin.settings.activeProvider;
+        fm["oracle_mode"] = fm["oracle_mode"] ?? "yes-no";
+        fm["lonelog"] = fm["lonelog"] ?? plugin.settings.lonelogMode;
+        fm["scene_counter"] = fm["scene_counter"] ?? 1;
+        fm["session_number"] = fm["session_number"] ?? 1;
+        fm["game_context"] = fm["game_context"] ?? "";
+        fm["scene_context"] = fm["scene_context"] ?? "";
+        if (values.genre) fm["genre"] = values.genre;
+        if (values.pcs) fm["pcs"] = values.pcs;
+        if (values.tone) fm["tone"] = values.tone;
+        if (values.language) fm["language"] = values.language;
+      });
+      new Notice("Sybyl frontmatter inserted.");
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:digest-source",
+    name: "Digest Source into Game Context",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context?.view.file) {
+        return;
+      }
+      const vaultFile = await pickVaultFile(plugin.app, "Choose a source file to digest");
+      if (!vaultFile) {
+        return;
+      }
+      const ref: SourceRef = {
+        label: vaultFile.basename,
+        mime_type: inferMimeType(vaultFile),
+        vault_path: vaultFile.path
+      };
+      const providerId = context.fm.provider ?? plugin.settings.activeProvider;
+      let resolvedSources;
+      try {
+        resolvedSources = await resolveSourcesForRequest(plugin.app, [ref], providerId);
+      } catch (error) {
+        new Notice(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+      const ruleset = context.fm.ruleset ?? "the game";
+      const digestPrompt = `Distill the following source material for use in a solo tabletop RPG session of "${ruleset}".
+
+Extract and condense into a compact reference:
+- Core rules and mechanics relevant to play
+- Key factions, locations, characters, and world facts
+- Tone, genre, and setting conventions
+- Any tables, move lists, or random generators
+
+Be concise and specific. Preserve game-mechanical details. Omit flavor prose and examples.`;
+      try {
+        const response = await plugin.requestRawGeneration(
+          context.fm,
+          digestPrompt,
+          2000,
+          resolvedSources
+        );
+        await plugin.app.fileManager.processFrontMatter(context.view.file, (fm) => {
+          fm["game_context"] = response.text;
+        });
+        new Notice("Game context updated.");
+      } catch (error) {
+        new Notice(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:ask-the-rules",
+    name: "Ask the Rules",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context?.view.file) {
+        return;
+      }
+      const sources = context.fm.sources ?? [];
+      if (!sources.length) {
+        new Notice("No sources attached to this note. Use Add Source File first.");
+        return;
+      }
+      const ref = sources.length === 1
+        ? sources[0]
+        : await pickSourceRef(plugin.app, "Choose a source to query", sources);
+      if (!ref) {
+        return;
+      }
+      const values = await openInputModal(plugin.app, "Ask the Rules", [
+        { key: "question", label: "Question", placeholder: "How does Momentum work?" }
+      ]);
+      if (!values?.question) {
+        return;
+      }
+      const providerId = context.fm.provider ?? plugin.settings.activeProvider;
+      let resolvedSources;
+      try {
+        resolvedSources = await resolveSourcesForRequest(plugin.app, [ref], providerId);
+      } catch (error) {
+        new Notice(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+      const ruleset = context.fm.ruleset ?? "the game";
+      const prompt = `You are a rules reference for "${ruleset}".
+Answer the following question using only the provided source material.
+Be precise and cite the relevant rule or page section if possible.
+
+Question: ${values.question}`;
+      try {
+        const response = await plugin.requestRawGeneration(context.fm, prompt, 1000, resolvedSources);
+        plugin.insertText(context.view, genericBlockquote("Rules", response.text));
+        plugin.maybeInsertTokenComment(context.view, response);
+      } catch (error) {
+        new Notice(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:adventure-seed",
+    name: "Adventure Seed",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context?.view.file) return;
+      const values = await openInputModal(plugin.app, "Adventure Seed", [
+        { key: "concept", label: "Theme or concept", optional: true, placeholder: "Leave blank for a random seed." }
+      ]);
+      if (!values) return;
+      const ruleset = context.fm.ruleset ?? "the game";
+      const concept = values.concept?.trim();
+      const prompt = `Generate an adventure seed for a solo tabletop RPG session of "${ruleset}".
+
+Structure the output as:
+- Premise: one sentence describing the situation
+- Conflict: the central tension or threat
+- Hook: the specific event that pulls the PC in
+- Tone: the intended atmosphere
+
+${concept ? `Theme/concept: ${concept}` : "Make it evocative and immediately playable."}
+Keep it concise — 4 bullet points, one short sentence each.`;
+      try {
+        const response = await plugin.requestRawGeneration(context.fm, prompt, 800, []);
+        const lonelog = isLonelogActive(plugin.settings, context.fm);
+        const insideCodeBlock = isInsideCodeBlock(context.view.editor);
+        const output = lonelog
+          ? formatAdventureSeed(response.text, lonelogOpts(plugin.settings, insideCodeBlock))
+          : genericBlockquote("Adventure Seed", response.text);
+        plugin.insertText(context.view, output);
+        plugin.maybeInsertTokenComment(context.view, response);
+      } catch (error) {
+        new Notice(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:generate-character",
+    name: "Generate Character",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context?.view.file) return;
+      const sources = context.fm.sources ?? [];
+      if (!sources.length) {
+        new Notice("No sources attached to this note. Add a rulebook first via Add Source File.");
+        return;
+      }
+      const ref = sources.length === 1
+        ? sources[0]
+        : await pickSourceRef(plugin.app, "Choose a rulebook source", sources);
+      if (!ref) return;
+      const values = await openInputModal(plugin.app, "Generate Character", [
+        { key: "concept", label: "Character concept", optional: true, placeholder: "Leave blank for a random character." }
+      ]);
+      if (!values) return;
+      const providerId = context.fm.provider ?? plugin.settings.activeProvider;
+      let resolvedSources;
+      try {
+        resolvedSources = await resolveSourcesForRequest(plugin.app, [ref], providerId);
+      } catch (error) {
+        new Notice(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+      const ruleset = context.fm.ruleset ?? "the game";
+      const concept = values.concept?.trim();
+      const lonelog = isLonelogActive(plugin.settings, context.fm);
+      const formatInstruction = lonelog
+        ? `Format the output as a Lonelog PC tag. Use the multi-line form for complex characters:
+[PC:Name
+  | stat: HP X, Stress Y
+  | gear: item1, item2
+  | trait: value1, value2
+]
+Include all stats and fields exactly as defined by the rules. Output the tag only — no extra commentary.`
+        : `Include all required fields as defined by the rules: name, stats/attributes, starting equipment, background, and any other mandatory character elements. Format clearly with one field per line.`;
+      const prompt = `Using ONLY the character creation rules in the provided source material, generate a character for "${ruleset}".
+
+Follow the exact character creation procedure described in the rules. Do not invent mechanics not present in the source.
+
+${concept ? `Character concept: ${concept}` : "Generate a random character."}
+
+${formatInstruction}`;
+      try {
+        const response = await plugin.requestRawGeneration(context.fm, prompt, 1500, resolvedSources);
+        const insideCodeBlock = isInsideCodeBlock(context.view.editor);
+        const output = lonelog
+          ? formatCharacter(response.text, lonelogOpts(plugin.settings, insideCodeBlock))
+          : genericBlockquote("Character", response.text);
+        plugin.insertText(context.view, output);
+        plugin.maybeInsertTokenComment(context.view, response);
+      } catch (error) {
+        new Notice(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:start-scene",
+    name: "Start Scene",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context?.view.file) {
+        return;
+      }
+      if (isLonelogActive(plugin.settings, context.fm)) {
+        const values = await openInputModal(plugin.app, "Start Scene", [
+          { key: "sceneDesc", label: "Scene description", placeholder: "Dark alley, midnight" }
+        ]);
+        if (!values?.sceneDesc) {
+          return;
+        }
+        const counter = context.fm.scene_counter ?? 1;
+        await runGeneration(
+          plugin,
+          `START SCENE. Generate only: 2-3 lines of third-person past-tense prose describing the atmosphere and setting of: "${values.sceneDesc}". No dialogue. No PC actions. No additional commentary.`,
+          (text, _fm, insideCodeBlock) => formatStartScene(text, `S${counter}`, values.sceneDesc, lonelogOpts(plugin.settings, insideCodeBlock))
+        );
+        if (plugin.settings.lonelogAutoIncScene) {
+          await writeFrontMatterKey(plugin.app, context.view.file, "scene_counter", counter + 1);
+        }
+        return;
+      }
+      await runGeneration(
+        plugin,
+        "START SCENE. Generate only: 2-3 lines of third-person past-tense prose describing the setting and atmosphere. No dialogue. No PC actions. No additional commentary.",
+        (text) => genericBlockquote("Scene", text)
+      );
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:declare-action",
+    name: "Declare Action",
+    callback: async () => {
+      const values = await openInputModal(plugin.app, "Declare Action", [
+        { key: "action", label: "Action" },
+        { key: "roll", label: "Roll result" }
+      ]);
+      if (!values?.action || !values.roll) {
+        return;
+      }
+      await runGeneration(
+        plugin,
+        `PC action: ${values.action}\nRoll result: ${values.roll}\nDescribe only the consequences and world reaction. Do not describe the PC's action.`,
+        (text, fm, insideCodeBlock) =>
+          isLonelogActive(plugin.settings, fm)
+            ? formatDeclareAction(values.action, values.roll, text, lonelogOpts(plugin.settings, insideCodeBlock))
+            : `> [Action] ${values.action} | Roll: ${values.roll}\n> [Result] ${text.trim().replace(/\n/g, "\n> ")}`
+      );
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:ask-oracle",
+    name: "Ask Oracle",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context) {
+        return;
+      }
+      const values = await openInputModal(plugin.app, "Ask Oracle", [
+        { key: "question", label: "Question" },
+        { key: "result", label: "Oracle result", optional: true }
+      ]);
+      if (!values?.question) {
+        return;
+      }
+      const hasResult = Boolean(values.result?.trim());
+      const message = hasResult
+        ? `Oracle question: ${values.question}\nOracle result: ${values.result}\nInterpret this result in the context of the scene. Third person, neutral, 2-3 lines.`
+        : `Oracle question: ${values.question}\nOracle mode: ${context.fm.oracle_mode ?? "yes-no"}\nRun the oracle and give the result plus a 1-2 line neutral interpretation.`;
+      await runGeneration(
+        plugin,
+        message,
+        (text, fm, insideCodeBlock) => {
+          if (!isLonelogActive(plugin.settings, fm)) {
+            return `> [Oracle] Q: ${values.question}\n> [Answer] ${text.trim().replace(/\n/g, "\n> ")}`;
+          }
+          if (hasResult) {
+            return formatAskOracle(values.question, values.result.trim(), text, lonelogOpts(plugin.settings, insideCodeBlock));
+          }
+          const parsed = parseLonelogOracleResponse(text);
+          return formatAskOracle(values.question, parsed.result, parsed.interpretation, lonelogOpts(plugin.settings, insideCodeBlock));
+        }
+      );
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:interpret-oracle",
+    name: "Interpret Oracle Roll",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context) {
+        return;
+      }
+      let selected = getSelection(context.view.editor);
+      if (!selected) {
+        const values = await openInputModal(plugin.app, "Interpret Oracle Result", [
+          { key: "oracle", label: "Oracle result" }
+        ]);
+        selected = values?.oracle?.trim() ?? "";
+      }
+      if (!selected) {
+        return;
+      }
+      await runGeneration(
+        plugin,
+        `Interpret this oracle result in the context of the current scene: "${selected}"\nNeutral, third-person, 2-3 lines. No dramatic language.`,
+        (text, fm, insideCodeBlock) =>
+          isLonelogActive(plugin.settings, fm)
+            ? formatInterpretOracle(text, lonelogOpts(plugin.settings, insideCodeBlock))
+            : genericBlockquote("Interpretation", text),
+        512,
+        "below-selection"
+      );
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:suggest-consequence",
+    name: "What Now",
+    callback: async () => {
+      await runGeneration(
+        plugin,
+        "Based on the current scene context, suggest 1-2 possible consequences or complications. Present them as neutral options, not as narrative outcomes. Do not choose between them.",
+        (text, fm, insideCodeBlock) =>
+          isLonelogActive(plugin.settings, fm)
+            ? formatSuggestConsequence(text, lonelogOpts(plugin.settings, insideCodeBlock))
+            : genericBlockquote("Options", text)
+      );
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:what-can-i-do",
+    name: "What Can I Do",
+    callback: async () => {
+      await runGeneration(
+        plugin,
+        "The player is stuck. Based on the current scene context, suggest exactly 3 concrete actions the PC could take next. Present them as neutral options numbered 1–3. Do not resolve or narrate any outcome. Do not recommend one over another.",
+        (text, fm, insideCodeBlock) =>
+          isLonelogActive(plugin.settings, fm)
+            ? formatSuggestConsequence(text, lonelogOpts(plugin.settings, insideCodeBlock))
+            : genericBlockquote("Actions", text)
+      );
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:expand-scene",
+    name: "Expand Scene",
+    callback: async () => {
+      await runGeneration(
+        plugin,
+        "Expand the current scene into a prose passage. Third person, past tense, 100-150 words. No dialogue. Do not describe the PC's internal thoughts or decisions. Stay strictly within the established scene context.",
+        (text, fm, insideCodeBlock) =>
+          isLonelogActive(plugin.settings, fm)
+            ? formatExpandScene(text, lonelogOpts(plugin.settings, insideCodeBlock))
+            : `---\n> [Prose] ${text.trim().replace(/\n/g, "\n> ")}\n---`,
+        600
+      );
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:upload-source",
+    name: "Add Source File",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context?.view.file) {
+        return;
+      }
+      try {
+        await addSourceToNote(plugin, context.view.file);
+      } catch (error) {
+        new Notice(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:manage-sources",
+    name: "Manage Sources",
+    callback: async () => {
+      await manageSources(plugin);
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:lonelog-parse-context",
+    name: "Update Scene Context",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context?.view.file) {
+        return;
+      }
+      if (!isLonelogActive(plugin.settings, context.fm)) {
+        new Notice("Lonelog mode is not enabled for this note.");
+        return;
+      }
+      const parsed = parseLonelogContext(context.noteBody, plugin.settings.lonelogContextDepth);
+      await writeFrontMatterKey(plugin.app, context.view.file, "scene_context", serializeContext(parsed));
+      new Notice("Scene context updated from log.");
+    }
+  });
+
+  plugin.addCommand({
+    id: "sybyl:lonelog-session-break",
+    name: "New Session Header",
+    callback: async () => {
+      const context = await plugin.getActiveNoteContext();
+      if (!context?.view.file) {
+        return;
+      }
+      if (!isLonelogActive(plugin.settings, context.fm)) {
+        new Notice("Lonelog mode is not enabled for this note.");
+        return;
+      }
+      const values = await openInputModal(plugin.app, "New Session Header", [
+        { key: "date", label: "Date", value: todayIsoDate() },
+        { key: "duration", label: "Duration", placeholder: "1h30" },
+        { key: "recap", label: "Recap", optional: true }
+      ]);
+      if (!values?.date) {
+        return;
+      }
+      const sessionNumber = context.fm.session_number ?? 1;
+      const block = `## Session ${sessionNumber}\n*Date: ${values.date} | Duration: ${values.duration || "-"}*\n\n${values.recap ? `**Recap:** ${values.recap}\n\n` : ""}`;
+      plugin.insertText(context.view, block, "cursor");
+      await writeFrontMatterKey(plugin.app, context.view.file, "session_number", sessionNumber + 1);
+    }
+  });
+}

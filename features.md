@@ -1,0 +1,11 @@
+- import/export markdown
+- text formatting bar + shortcuts
+- front matter auto-compiling
+- [solo-toolkit](https://github.com/alexkurowski/solo-toolkit):
+  - dice roller
+  - Random generators
+  - Custom random tables
+  - Deck of cards
+  - Custom Deck of Cards (nice-to-have)
+  - Cut-up method mode (nice-to-have)
+- Full Lonelog Dice Notation and Card Notation Support

@@ -1,0 +1,131 @@
+import {
+  GeminiProviderConfig,
+  GenerationRequest,
+  GenerationResponse,
+  UploadedFileInfo
+} from "../types";
+import { AIProvider } from "./base";
+
+export class GeminiProvider implements AIProvider {
+  readonly id = "gemini";
+  readonly name = "Gemini";
+
+  constructor(private readonly config: GeminiProviderConfig) {}
+
+  async generate(request: GenerationRequest): Promise<GenerationResponse> {
+    this.ensureConfigured();
+    const model = request.model || this.config.defaultModel;
+    const endpoint =
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(this.config.apiKey)}`;
+
+    const parts: Array<Record<string, unknown>> = [];
+    for (const source of request.resolvedSources ?? []) {
+      if (source.base64Data) {
+        parts.push({
+          inlineData: {
+            mimeType: source.ref.mime_type,
+            data: source.base64Data
+          }
+        });
+      } else if (source.textContent) {
+        parts.push({ text: `[SOURCE: ${source.ref.label}]\n${source.textContent}\n[END SOURCE]` });
+      }
+    }
+    parts.push({ text: request.userMessage });
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: request.systemPrompt }] },
+        contents: [{ role: "user", parts }],
+        generationConfig: {
+          temperature: request.temperature,
+          maxOutputTokens: request.maxOutputTokens,
+          thinkingConfig: { thinkingBudget: 0 }
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await this.extractError(response, "Gemini"));
+    }
+
+    const data = await response.json();
+    const text = (data.candidates?.[0]?.content?.parts ?? [])
+      .map((part: { text?: string }) => part.text ?? "")
+      .join("")
+      .trim();
+
+    if (!text) {
+      throw new Error("Provider returned an empty response.");
+    }
+
+    return {
+      text,
+      inputTokens: data.usageMetadata?.promptTokenCount,
+      outputTokens: data.usageMetadata?.candidatesTokenCount
+    };
+  }
+
+  async uploadSource(): Promise<UploadedFileInfo> {
+    throw new Error("Use 'Add Source' from the note to attach a vault file inline.");
+  }
+
+  async listSources(): Promise<UploadedFileInfo[]> {
+    return [];
+  }
+
+  async deleteSource(): Promise<void> {}
+
+  async listModels(): Promise<string[]> {
+    if (!this.config.apiKey.trim()) return [];
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(this.config.apiKey)}`
+      );
+      if (!response.ok) return [];
+      const data = await response.json();
+      return (data.models ?? [])
+        .filter((m: { supportedGenerationMethods?: string[] }) =>
+          m.supportedGenerationMethods?.includes("generateContent"))
+        .map((m: { name?: string }) => (m.name ?? "").replace(/^models\//, ""))
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  async validate(): Promise<boolean> {
+    if (!this.config.apiKey.trim()) {
+      return false;
+    }
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(this.config.apiKey)}`
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  private ensureConfigured(): void {
+    if (!this.config.apiKey.trim()) {
+      throw new Error("No Gemini API key set. Check settings.");
+    }
+  }
+
+  private async extractError(response: Response, providerName: string): Promise<string> {
+    if (response.status === 401 || response.status === 403) {
+      return `${providerName} API key rejected. Check settings.`;
+    }
+    try {
+      const data = await response.json();
+      const msg = data?.error?.message ?? `${providerName} request failed (${response.status}).`;
+      return response.status === 429 ? `${providerName} quota/rate error: ${msg}` : msg;
+    } catch {
+      return `${providerName} request failed (${response.status}).`;
+    }
+  }
+}
