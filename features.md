@@ -1,5 +1,3 @@
-- Full Lonelog note template support
-- Full Lonelog Dice Notation and Card Notation Support
 - [solo-toolkit](https://github.com/alexkurowski/solo-toolkit):
   - dice roller
   - Random generators
@@ -9,3 +7,4 @@
   - Cut-up method mode (nice-to-have)
 - Android and iOS support
 - multiplatform builds (and marketplace support?)
+- sync functions (e.g. Google Drive?)

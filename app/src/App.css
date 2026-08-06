@@ -316,6 +316,18 @@ html, body, #root {
 .cm-lonelog-beat-result { color: #7fd88f; }
 .cm-lonelog-beat-consequence { color: #6fb8e0; }
 .cm-lonelog-beat-roll { color: #e08f6f; }
+.cm-lonelog-dice {
+  color: #c9a3f5;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.cm-lonelog-card {
+  color: #f5d76e;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 0 2px;
+}
 
 /* Buttons / inputs */
 button {

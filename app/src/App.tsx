@@ -38,9 +38,16 @@ const NEW_NOTE_FIELDS: PromptField[] = [
   { key: "pc_name", label: "Character name", optional: true },
   { key: "player", label: "Player", optional: true },
   { key: "ruleset", label: "Ruleset", optional: true, placeholder: "Ironsworn" },
+  { key: "genre", label: "Genre", optional: true },
+  { key: "tools", label: "Tools", optional: true },
+  { key: "themes", label: "Themes", optional: true },
+  { key: "tone", label: "Tone", optional: true },
+  { key: "notes", label: "Notes", optional: true },
   { key: "session_type", label: "Type (campaign / one_shot)", defaultValue: "campaign" },
   { key: "game_context", label: "Game context", optional: true }
 ];
+
+const CAMPAIGN_INFO_KEYS = ["title", "player", "ruleset", "genre", "start_date", "tools", "themes", "tone", "notes"] as const;
 
 const ASK_ORACLE_FIELDS: PromptField[] = [
   { key: "question", label: "Question" },
@@ -214,6 +221,11 @@ export default function App() {
       pc_name: values.pc_name?.trim(),
       player: values.player?.trim(),
       ruleset: values.ruleset?.trim(),
+      genre: values.genre?.trim(),
+      tools: values.tools?.trim(),
+      themes: values.themes?.trim(),
+      tone: values.tone?.trim(),
+      notes: values.notes?.trim(),
       session_type: sessionType,
       game_context: values.game_context?.trim() ?? "",
       oracle_mode: "yes-no" as const,
@@ -625,6 +637,49 @@ Keep it concise — 4 bullet points, one short sentence each.`;
     );
   }
 
+  function cmdEditCampaignInfo() {
+    const fm = activeFileRef.current?.fm;
+    if (!fm) return;
+    const fields: PromptField[] = [
+      { key: "title", label: "Campaign title", optional: true, defaultValue: fm.title },
+      { key: "player", label: "Player", optional: true, defaultValue: fm.player },
+      { key: "ruleset", label: "Ruleset", optional: true, placeholder: "Ironsworn", defaultValue: fm.ruleset },
+      { key: "genre", label: "Genre", optional: true, defaultValue: fm.genre },
+      { key: "start_date", label: "Start date", optional: true, defaultValue: fm.start_date },
+      { key: "tools", label: "Tools", optional: true, defaultValue: fm.tools },
+      { key: "themes", label: "Themes", optional: true, defaultValue: fm.themes },
+      { key: "tone", label: "Tone", optional: true, defaultValue: fm.tone },
+      { key: "notes", label: "Notes", optional: true, defaultValue: fm.notes }
+    ];
+    openModal("Edit Campaign Info", fields, async (values) => {
+      closeModal();
+      const patch: Partial<NoteFrontMatter> = {};
+      for (const key of CAMPAIGN_INFO_KEYS) {
+        patch[key] = values[key]?.trim();
+      }
+      await updateActiveFrontmatter(patch);
+      flashStatus("Campaign info updated.");
+    });
+  }
+
+  function cmdInsertQuickScene() {
+    openModal(
+      "Insert Quick Scene",
+      [{ key: "sceneDesc", label: "Scene description", placeholder: "Dark alley, midnight" }],
+      async (values) => {
+        const sceneDesc = values.sceneDesc?.trim();
+        if (!sceneDesc) return;
+        closeModal();
+        const counter = activeFileRef.current?.fm.scene_counter ?? 1;
+        const block = `S${counter} *${sceneDesc}*\n\n@ \nd: \n=> \n\n? \n-> \n=> \n`;
+        insertFormatted(block, "cursor");
+        if (settings.lonelogAutoIncScene) {
+          await updateActiveFrontmatter({ scene_counter: counter + 1 });
+        }
+      }
+    );
+  }
+
   async function cmdAddSourceFile() {
     if (!vaultPath || !activeFileRef.current) return;
     const picked = await open({
@@ -790,6 +845,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     { id: "what-can-i-do", label: "What Can I Do", run: cmdWhatCanIDo },
     { id: "update-scene-context", label: "Update Scene Context", run: cmdUpdateSceneContext },
     { id: "new-session-header", label: "New Session Header", run: cmdNewSessionHeader },
+    { id: "edit-campaign-info", label: "Edit Campaign Info", run: cmdEditCampaignInfo },
+    { id: "insert-quick-scene", label: "Insert Quick Scene", run: cmdInsertQuickScene },
     { id: "add-source-file", label: "Add Source File", run: cmdAddSourceFile },
     { id: "manage-sources", label: "Manage Sources", run: cmdManageSources },
     { id: "ask-the-rules", label: "Ask the Rules", run: cmdAskTheRules },
