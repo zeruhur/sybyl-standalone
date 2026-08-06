@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { ProviderID, SybylSettings } from "../lib/types";
+import { getProvider } from "../lib/providers";
 
 interface SettingsModalProps {
   settings: SybylSettings;
@@ -15,9 +16,40 @@ const PROVIDER_LABELS: Record<ProviderID, string> = {
   ollama: "Ollama (local)"
 };
 
+interface ModelFieldProps {
+  providerId: ProviderID;
+  value: string;
+  models: string[];
+  loading: boolean;
+  onChange: (value: string) => void;
+  onRefresh: () => void;
+}
+
+function ModelField({ providerId, value, models, loading, onChange, onRefresh }: ModelFieldProps) {
+  const listId = `models-${providerId}`;
+  return (
+    <label className="modal-field">
+      <span>Model</span>
+      <div className="model-field-row">
+        <input list={listId} value={value} onChange={(e) => onChange(e.currentTarget.value)} />
+        <button type="button" onClick={onRefresh} disabled={loading} title="Fetch available models from the provider">
+          {loading ? "..." : "Refresh"}
+        </button>
+      </div>
+      <datalist id={listId}>
+        {models.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+    </label>
+  );
+}
+
 export default function SettingsModal({ settings, onSave, onClose }: SettingsModalProps) {
   const [draft, setDraft] = useState<SybylSettings>(structuredClone(settings));
   const [version, setVersion] = useState("");
+  const [modelOptions, setModelOptions] = useState<Partial<Record<ProviderID, string[]>>>({});
+  const [loadingModels, setLoadingModels] = useState<Partial<Record<ProviderID, boolean>>>({});
 
   useEffect(() => {
     getVersion().then(setVersion).catch(() => {});
@@ -26,6 +58,27 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
   function save() {
     onSave(draft);
     onClose();
+  }
+
+  async function refreshModels(providerId: ProviderID) {
+    setLoadingModels((prev) => ({ ...prev, [providerId]: true }));
+    try {
+      const models = await getProvider(draft, providerId).listModels();
+      if (models.length > 0) {
+        setModelOptions((prev) => ({ ...prev, [providerId]: models }));
+      }
+    } catch {
+      // Silent fallback — the Model field stays free-text, matching the original plugin's behavior.
+    } finally {
+      setLoadingModels((prev) => ({ ...prev, [providerId]: false }));
+    }
+  }
+
+  function setModel(providerId: ProviderID, value: string) {
+    setDraft((d) => ({
+      ...d,
+      providers: { ...d.providers, [providerId]: { ...d.providers[providerId], defaultModel: value } }
+    }));
   }
 
   return (
@@ -73,18 +126,14 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
               }
             />
           </label>
-          <label className="modal-field">
-            <span>Model</span>
-            <input
-              value={draft.providers.anthropic.defaultModel}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  providers: { ...draft.providers, anthropic: { ...draft.providers.anthropic, defaultModel: e.currentTarget.value } }
-                })
-              }
-            />
-          </label>
+          <ModelField
+            providerId="anthropic"
+            value={draft.providers.anthropic.defaultModel}
+            models={modelOptions.anthropic ?? []}
+            loading={loadingModels.anthropic ?? false}
+            onChange={(v) => setModel("anthropic", v)}
+            onRefresh={() => refreshModels("anthropic")}
+          />
         </fieldset>
 
         <fieldset>
@@ -102,18 +151,14 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
               }
             />
           </label>
-          <label className="modal-field">
-            <span>Model</span>
-            <input
-              value={draft.providers.openai.defaultModel}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  providers: { ...draft.providers, openai: { ...draft.providers.openai, defaultModel: e.currentTarget.value } }
-                })
-              }
-            />
-          </label>
+          <ModelField
+            providerId="openai"
+            value={draft.providers.openai.defaultModel}
+            models={modelOptions.openai ?? []}
+            loading={loadingModels.openai ?? false}
+            onChange={(v) => setModel("openai", v)}
+            onRefresh={() => refreshModels("openai")}
+          />
         </fieldset>
 
         <fieldset>
@@ -131,18 +176,14 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
               }
             />
           </label>
-          <label className="modal-field">
-            <span>Model</span>
-            <input
-              value={draft.providers.gemini.defaultModel}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  providers: { ...draft.providers, gemini: { ...draft.providers.gemini, defaultModel: e.currentTarget.value } }
-                })
-              }
-            />
-          </label>
+          <ModelField
+            providerId="gemini"
+            value={draft.providers.gemini.defaultModel}
+            models={modelOptions.gemini ?? []}
+            loading={loadingModels.gemini ?? false}
+            onChange={(v) => setModel("gemini", v)}
+            onRefresh={() => refreshModels("gemini")}
+          />
         </fieldset>
 
         <fieldset>
@@ -159,18 +200,14 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
               }
             />
           </label>
-          <label className="modal-field">
-            <span>Model</span>
-            <input
-              value={draft.providers.ollama.defaultModel}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  providers: { ...draft.providers, ollama: { ...draft.providers.ollama, defaultModel: e.currentTarget.value } }
-                })
-              }
-            />
-          </label>
+          <ModelField
+            providerId="ollama"
+            value={draft.providers.ollama.defaultModel}
+            models={modelOptions.ollama ?? []}
+            loading={loadingModels.ollama ?? false}
+            onChange={(v) => setModel("ollama", v)}
+            onRefresh={() => refreshModels("ollama")}
+          />
         </fieldset>
 
         <p className="settings-note">

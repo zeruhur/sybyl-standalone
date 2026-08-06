@@ -76,9 +76,14 @@ html, body, #root {
   border-color: transparent;
 }
 
-.new-note-button {
-  width: 100%;
+.sidebar-note-actions {
+  display: flex;
+  gap: 6px;
   margin-bottom: 16px;
+}
+
+.new-note-button {
+  flex: 1;
   background: var(--accent-dim);
   color: #fff;
   border: none;
@@ -86,6 +91,11 @@ html, body, #root {
 .new-note-button:hover {
   background: var(--accent);
   border-color: transparent;
+}
+
+.import-note-button,
+.export-note-button {
+  flex-shrink: 0;
 }
 
 .sidebar-section {
@@ -115,16 +125,12 @@ html, body, #root {
 }
 
 .file-row {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   border: 1px solid transparent;
   border-radius: 6px;
-  padding: 8px 10px;
   margin-bottom: 2px;
-  cursor: pointer;
-  box-shadow: none;
   color: var(--text);
 }
 .file-row:hover {
@@ -134,6 +140,38 @@ html, body, #root {
 .file-row.active {
   background: var(--bg-panel);
   border-color: var(--accent-dim);
+}
+.file-row-main {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  text-align: left;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: inherit;
+}
+.file-row-delete {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 8px;
+  margin-right: 4px;
+  cursor: pointer;
+  opacity: 0;
+}
+.file-row:hover .file-row-delete {
+  opacity: 1;
+}
+.file-row-delete:hover {
+  color: var(--danger);
+  border-color: transparent;
 }
 .file-row-title {
   font-weight: 600;
@@ -163,6 +201,20 @@ html, body, #root {
   padding: 10px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
+}
+
+.format-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.format-button {
+  padding: 4px 10px;
+  font-size: 13px;
+  min-width: 30px;
 }
 
 .active-file-name {
@@ -197,6 +249,21 @@ html, body, #root {
 .cancel-button:hover {
   background: var(--danger);
   color: #fff;
+}
+
+.confirm-message {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 16px;
+}
+
+.confirm-danger-button {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+.confirm-danger-button:hover {
+  opacity: 0.85;
 }
 
 .empty-state {
@@ -403,6 +470,17 @@ input:focus, select:focus {
   font-size: 12px;
   color: var(--text-dim);
   margin: 8px 0 16px;
+}
+
+.model-field-row {
+  display: flex;
+  gap: 6px;
+}
+.model-field-row input {
+  flex: 1;
+}
+.model-field-row button {
+  flex-shrink: 0;
 }
 
 .modal-field {

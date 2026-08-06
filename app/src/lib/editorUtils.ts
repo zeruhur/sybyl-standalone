@@ -35,6 +35,33 @@ export function insertBelowSelection(view: EditorView, text: string): void {
   view.focus();
 }
 
+/** Wraps the current selection with `before`/`after` markers (bold, italic, code, links, ...).
+ * With no selection, inserts an empty marker pair and places the cursor between them. */
+export function wrapSelection(view: EditorView, before: string, after: string): void {
+  const { from, to } = view.state.selection.main;
+  const selected = view.state.sliceDoc(from, to);
+  const insert = `${before}${selected}${after}`;
+  view.dispatch({
+    changes: { from, to, insert },
+    selection: selected
+      ? { anchor: from, head: from + insert.length }
+      : { anchor: from + before.length }
+  });
+  view.focus();
+}
+
+/** Toggles a line prefix (e.g. "## ") at the start of the line containing the cursor. */
+export function togglePrefixLine(view: EditorView, prefix: string): void {
+  const pos = view.state.selection.main.head;
+  const line = view.state.doc.lineAt(pos);
+  const hasPrefix = line.text.startsWith(prefix);
+  const changes = hasPrefix
+    ? { from: line.from, to: line.from + prefix.length, insert: "" }
+    : { from: line.from, insert: prefix };
+  view.dispatch({ changes });
+  view.focus();
+}
+
 export function isInsideCodeBlock(view: EditorView, pos?: number): boolean {
   const checkPos = pos ?? view.state.selection.main.head;
   const checkLine = view.state.doc.lineAt(checkPos).number;

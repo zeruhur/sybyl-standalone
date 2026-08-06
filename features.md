@@ -1,10 +1,5 @@
-- import/export markdown
-- text formatting bar + shortcuts
-- Lonelog front matter auto-compiling
 - Full Lonelog note template support
 - Full Lonelog Dice Notation and Card Notation Support
-- combo list to choose models for each providers, updating the list from provider APIs (with fallback if not available/reachable)
-- Android and iOS support
 - [solo-toolkit](https://github.com/alexkurowski/solo-toolkit):
   - dice roller
   - Random generators
@@ -12,4 +7,5 @@
   - Deck of cards
   - Custom Deck of Cards (nice-to-have)
   - Cut-up method mode (nice-to-have)
+- Android and iOS support
 - multiplatform builds (and marketplace support?)

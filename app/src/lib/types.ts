@@ -46,11 +46,18 @@ export interface SourceRef {
 }
 
 export interface NoteFrontMatter {
-  // Lonelog standard fields
+  // Lonelog standard fields (lonelog.md §5.1 Campaign Header)
+  title?: string;
   ruleset?: string;
   genre?: string;
+  player?: string;
   pcs?: string;
+  start_date?: string;
+  last_update?: string;
+  tools?: string;
+  themes?: string;
   tone?: string;
+  notes?: string;
   // Sybyl-specific fields
   system_prompt_override?: string;
   provider?: ProviderID;

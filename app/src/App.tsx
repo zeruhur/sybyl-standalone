@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import Editor from "./components/Editor";
 import Sidebar from "./components/Sidebar";
@@ -10,7 +10,9 @@ import CommandPalette, { CommandItem } from "./components/CommandPalette";
 import FileSwitcher from "./components/FileSwitcher";
 import ListPickerModal, { ListPickerItem } from "./components/ListPickerModal";
 import SourceManagerModal from "./components/SourceManagerModal";
-import { createVaultFile, getSavedVaultPath, importSourceFile, listVaultFiles, loadSetting, pickVaultFolder, saveSetting, writeVaultFile } from "./lib/vault";
+import FormatToolbar from "./components/FormatToolbar";
+import ConfirmModal from "./components/ConfirmModal";
+import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, listVaultFiles, loadSetting, pickVaultFolder, saveSetting, writeVaultFile } from "./lib/vault";
 import { keychainGet, keychainSet } from "./lib/keychain";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
 import { GenerationRequest, NoteFrontMatter, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
@@ -28,11 +30,13 @@ import {
   formatSuggestConsequence,
   LonelogFormatOptions
 } from "./lib/lonelog/formatter";
-import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, isInsideCodeBlock } from "./lib/editorUtils";
+import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, isInsideCodeBlock, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
 import "./App.css";
 
 const NEW_NOTE_FIELDS: PromptField[] = [
+  { key: "title", label: "Campaign title", optional: true },
   { key: "pc_name", label: "Character name", optional: true },
+  { key: "player", label: "Player", optional: true },
   { key: "ruleset", label: "Ruleset", optional: true, placeholder: "Ironsworn" },
   { key: "session_type", label: "Type (campaign / one_shot)", defaultValue: "campaign" },
   { key: "game_context", label: "Game context", optional: true }
@@ -56,6 +60,20 @@ function parseLonelogOracleResponse(text: string): { result: string; interpretat
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Auto-compiles the Lonelog standard campaign-header fields (lonelog.md §5.1) that can be
+ * derived from the log body: last_update always refreshes, pcs is re-derived from the most
+ * recent [PC:...] tag(s) found in the log. */
+function compileFrontmatter(body: string, contextDepth: number): Partial<NoteFrontMatter> {
+  const ctx = parseLonelogContext(body, contextDepth);
+  const derivedPcs = ctx.pcState.length
+    ? ctx.pcState.map((state) => `${state.split("|")[0].trim()} [PC:${state}]`).join(", ")
+    : undefined;
+  return {
+    last_update: todayIsoDate(),
+    ...(derivedPcs ? { pcs: derivedPcs } : {})
+  };
 }
 
 const KEYCHAIN_PROVIDERS = ["anthropic", "openai", "gemini"] as const;
@@ -100,6 +118,7 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<ActiveModal | null>(null);
   const [activeListPicker, setActiveListPicker] = useState<ActiveListPicker | null>(null);
   const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<VaultFile | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [status, setStatus] = useState<string>("");
@@ -169,9 +188,14 @@ export default function App() {
     saveTimer.current = window.setTimeout(async () => {
       const file = activeFileRef.current;
       if (!file || file.path !== path) return;
-      await writeVaultFile(path, file.fm, nextBody);
+      const nextFm: NoteFrontMatter = { ...file.fm, ...compileFrontmatter(nextBody, settings.lonelogContextDepth) };
+      await writeVaultFile(path, nextFm, nextBody);
+      const updated: VaultFile = { ...file, fm: nextFm, body: nextBody };
+      setActiveFile(updated);
+      activeFileRef.current = updated;
+      setFiles((prev) => prev.map((f) => (f.path === updated.path ? updated : f)));
     }, 500);
-  }, []);
+  }, [settings.lonelogContextDepth]);
 
   function handleBodyChange(next: string) {
     setBody(next);
@@ -184,19 +208,108 @@ export default function App() {
     setNewNoteOpen(false);
     if (!vaultPath) return;
     const sessionType: SessionType = values.session_type?.trim() === "one_shot" ? "one_shot" : "campaign";
+    const today = todayIsoDate();
     const fm = {
+      title: values.title?.trim(),
       pc_name: values.pc_name?.trim(),
+      player: values.player?.trim(),
       ruleset: values.ruleset?.trim(),
       session_type: sessionType,
       game_context: values.game_context?.trim() ?? "",
       oracle_mode: "yes-no" as const,
       scene_counter: 1,
-      session_number: 1
+      session_number: 1,
+      start_date: today,
+      last_update: today
     };
     const file = await createVaultFile(vaultPath, fm, "");
     const updated = await refreshFiles(vaultPath);
     const match = updated.find((f) => f.path === file.path) ?? file;
     selectFile(match);
+  }
+
+  async function runImportNote() {
+    if (!vaultPath) return;
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: "Markdown", extensions: ["md", "markdown"] }]
+    });
+    if (!picked || Array.isArray(picked)) return;
+    try {
+      const imported = await importNoteFile(vaultPath, picked);
+      const updated = await refreshFiles(vaultPath);
+      const match = updated.find((f) => f.path === imported.path) ?? imported;
+      selectFile(match);
+      flashStatus(`Imported: ${match.name}`);
+    } catch (error) {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function confirmDeleteNote() {
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    if (!target || !vaultPath) return;
+    try {
+      await deleteVaultFile(target.path);
+      if (activeFileRef.current?.path === target.path) {
+        setActiveFile(null);
+        activeFileRef.current = null;
+        setBody("");
+      }
+      await refreshFiles(vaultPath);
+      flashStatus(`Deleted: ${target.name}`);
+    } catch (error) {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function cmdExportNote() {
+    const file = activeFileRef.current;
+    if (!file) return;
+    const target = await save({
+      defaultPath: file.name,
+      filters: [{ name: "Markdown", extensions: ["md", "markdown"] }]
+    });
+    if (!target) return;
+    try {
+      const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+      await exportNoteTo(target, file.fm, currentBody);
+      flashStatus(`Exported to ${target}`);
+    } catch (error) {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  function formatBold() {
+    const view = editorViewRef.current;
+    if (view) wrapSelection(view, "**", "**");
+  }
+
+  function formatItalic() {
+    const view = editorViewRef.current;
+    if (view) wrapSelection(view, "*", "*");
+  }
+
+  function formatCode() {
+    const view = editorViewRef.current;
+    if (view) wrapSelection(view, "`", "`");
+  }
+
+  function formatHeading() {
+    const view = editorViewRef.current;
+    if (view) togglePrefixLine(view, "## ");
+  }
+
+  function formatLink() {
+    const view = editorViewRef.current;
+    if (!view) return;
+    openModal("Insert Link", [{ key: "url", label: "URL", placeholder: "https://..." }], (values) => {
+      closeModal();
+      const url = values.url?.trim();
+      if (!url) return;
+      wrapSelection(view, "[", `](${url})`);
+    });
   }
 
   async function saveSettings(next: SybylSettings) {
@@ -698,6 +811,9 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         onSelect={selectFile}
         onChangeVault={handleChangeVault}
         onNewNote={() => setNewNoteOpen(true)}
+        onImportNote={runImportNote}
+        onExportNote={cmdExportNote}
+        onDeleteNote={setDeleteTarget}
         vaultPath={vaultPath}
         version={version}
       />
@@ -723,7 +839,16 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
           </div>
         )}
         {activeFile ? (
-          <Editor value={body} onChange={handleBodyChange} editorRef={editorViewRef} />
+          <>
+            <FormatToolbar
+              onBold={formatBold}
+              onItalic={formatItalic}
+              onCode={formatCode}
+              onHeading={formatHeading}
+              onLink={formatLink}
+            />
+            <Editor value={body} onChange={handleBodyChange} editorRef={editorViewRef} />
+          </>
         ) : (
           <div className="empty-state">
             {vaultPath ? "Select a file from the sidebar to begin." : "Choose a vault folder to get started."}
@@ -771,6 +896,15 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
           sources={activeFile?.fm.sources ?? []}
           onRemove={removeSource}
           onClose={() => setSourceManagerOpen(false)}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete Note"
+          message={`Permanently delete "${deleteTarget.fm.pc_name || deleteTarget.name}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={confirmDeleteNote}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </div>

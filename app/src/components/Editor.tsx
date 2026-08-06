@@ -6,6 +6,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { basicSetup } from "codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { lonelogHighlight } from "../lib/lonelogHighlight";
+import { wrapSelection } from "../lib/editorUtils";
 
 interface EditorProps {
   value: string;
@@ -26,7 +27,13 @@ export default function Editor({ value, onChange, editorRef }: EditorProps) {
       extensions: [
         basicSetup,
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([
+          { key: "Mod-b", run: (v) => { wrapSelection(v, "**", "**"); return true; } },
+          { key: "Mod-i", run: (v) => { wrapSelection(v, "*", "*"); return true; } },
+          { key: "Mod-e", run: (v) => { wrapSelection(v, "`", "`"); return true; } },
+          ...defaultKeymap,
+          ...historyKeymap
+        ]),
         markdown(),
         lonelogHighlight(),
         oneDark,

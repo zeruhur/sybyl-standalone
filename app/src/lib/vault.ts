@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { readTextFile, writeTextFile, readDir, exists, readFile, writeFile, mkdir } from "@tauri-apps/plugin-fs";
+import { readTextFile, writeTextFile, readDir, exists, readFile, writeFile, mkdir, remove } from "@tauri-apps/plugin-fs";
 import { load, Store } from "@tauri-apps/plugin-store";
 import { Buffer } from "buffer";
 import { NoteFrontMatter, VaultFile } from "./types";
@@ -86,9 +86,21 @@ function withoutUndefined(fm: NoteFrontMatter): Record<string, unknown> {
   return Object.fromEntries(Object.entries(fm).filter(([, value]) => value !== undefined));
 }
 
+export function stringifyNote(fm: NoteFrontMatter, body: string): string {
+  return matter.stringify(body, withoutUndefined(fm));
+}
+
 export async function writeVaultFile(path: string, fm: NoteFrontMatter, body: string): Promise<void> {
-  const out = matter.stringify(body, withoutUndefined(fm));
-  await writeTextFile(path, out);
+  await writeTextFile(path, stringifyNote(fm, body));
+}
+
+export async function deleteVaultFile(path: string): Promise<void> {
+  await remove(path);
+}
+
+/** Writes the given frontmatter+body to an arbitrary path outside the vault. */
+export async function exportNoteTo(path: string, fm: NoteFrontMatter, body: string): Promise<void> {
+  await writeTextFile(path, stringifyNote(fm, body));
 }
 
 function slugify(name: string): string {
@@ -137,4 +149,25 @@ export async function importSourceFile(vaultPath: string, pickedPath: string): P
   const bytes = await readFile(pickedPath);
   await writeFile(destPath, bytes);
   return destPath;
+}
+
+/** Copies an externally-picked .md file into the vault root as a new note, avoiding name collisions. */
+export async function importNoteFile(vaultPath: string, pickedPath: string): Promise<VaultFile> {
+  const fileName = pickedPath.split(/[\\/]/).pop() ?? pickedPath;
+  const dotIndex = fileName.lastIndexOf(".");
+  const base = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+  let destPath = joinPath(vaultPath, `${base}.md`);
+  let suffix = 2;
+  while (await exists(destPath)) {
+    destPath = joinPath(vaultPath, `${base}-${suffix}.md`);
+    suffix += 1;
+  }
+  const raw = await readTextFile(pickedPath);
+  const parsed = matter(raw);
+  const fm: NoteFrontMatter = {
+    session_type: "campaign",
+    ...(parsed.data as NoteFrontMatter)
+  };
+  await writeVaultFile(destPath, fm, parsed.content);
+  return readVaultFile(destPath);
 }

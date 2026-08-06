@@ -8,6 +8,7 @@
     "opener:default",
     "dialog:default",
     "dialog:allow-open",
+    "dialog:allow-save",
     "store:default",
     {
       "identifier": "fs:allow-read-dir",
@@ -35,6 +36,10 @@
     },
     {
       "identifier": "fs:allow-mkdir",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-remove",
       "allow": [{ "path": "**" }]
     }
   ]
