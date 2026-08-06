@@ -12,7 +12,7 @@ export class OpenAIProvider implements AIProvider {
 
   constructor(private readonly config: OpenAIProviderConfig) {}
 
-  async generate(request: GenerationRequest): Promise<GenerationResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse> {
     this.ensureConfigured();
     const baseUrl = this.config.baseUrl.replace(/\/$/, "");
     const model = request.model || this.config.defaultModel;
@@ -49,7 +49,8 @@ export class OpenAIProvider implements AIProvider {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.config.apiKey}`
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     });
 
     if (!response.ok) {

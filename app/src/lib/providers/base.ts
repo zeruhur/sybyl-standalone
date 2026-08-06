@@ -3,7 +3,7 @@ import { GenerationRequest, GenerationResponse, UploadedFileInfo } from "../type
 export interface AIProvider {
   readonly id: string;
   readonly name: string;
-  generate(request: GenerationRequest): Promise<GenerationResponse>;
+  generate(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse>;
   uploadSource(fileContent: ArrayBuffer, mimeType: string, displayName: string): Promise<UploadedFileInfo>;
   listSources(): Promise<UploadedFileInfo[]>;
   deleteSource(ref: UploadedFileInfo): Promise<void>;

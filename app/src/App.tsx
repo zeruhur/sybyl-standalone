@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
+import { open } from "@tauri-apps/plugin-dialog";
 import Editor from "./components/Editor";
 import Sidebar from "./components/Sidebar";
 import SettingsModal from "./components/SettingsModal";
 import PromptModal, { PromptField } from "./components/PromptModal";
 import CommandPalette, { CommandItem } from "./components/CommandPalette";
-import { createVaultFile, getSavedVaultPath, listVaultFiles, loadSetting, pickVaultFolder, saveSetting, writeVaultFile } from "./lib/vault";
+import FileSwitcher from "./components/FileSwitcher";
+import ListPickerModal, { ListPickerItem } from "./components/ListPickerModal";
+import SourceManagerModal from "./components/SourceManagerModal";
+import { createVaultFile, getSavedVaultPath, importSourceFile, listVaultFiles, loadSetting, pickVaultFolder, saveSetting, writeVaultFile } from "./lib/vault";
+import { keychainGet, keychainSet } from "./lib/keychain";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
-import { NoteFrontMatter, SessionType, SybylSettings, VaultFile } from "./lib/types";
-import { buildRequest } from "./lib/promptBuilder";
+import { GenerationRequest, NoteFrontMatter, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
+import { buildRequest, buildSystemPrompt } from "./lib/promptBuilder";
 import { getProvider } from "./lib/providers";
 import { parseLonelogContext, serializeContext } from "./lib/lonelog/parser";
+import { inferMimeType, resolveSourcesForRequest } from "./lib/sourceUtils";
 import {
   formatAdventureSeed,
   formatAskOracle,
@@ -51,12 +57,35 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+const KEYCHAIN_PROVIDERS = ["anthropic", "openai", "gemini"] as const;
+
+/** Reads a provider's API key from the OS keychain, falling back to (and migrating in) a
+ * legacy plaintext value that may still be sitting in the settings store from before Phase 3. */
+async function migrateAndLoadApiKey(account: string, legacyKey: string): Promise<string> {
+  try {
+    const stored = await keychainGet(account);
+    if (stored) return stored;
+    if (legacyKey) {
+      await keychainSet(account, legacyKey).catch(() => {});
+    }
+    return legacyKey;
+  } catch {
+    return legacyKey;
+  }
+}
+
 type Placement = "cursor" | "below-selection" | "end-of-note";
 
 interface ActiveModal {
   title: string;
   fields: PromptField[];
   onSubmit: (values: Record<string, string>) => void;
+}
+
+interface ActiveListPicker {
+  title: string;
+  items: ListPickerItem[];
+  onPick: (id: string) => void;
 }
 
 export default function App() {
@@ -68,7 +97,10 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<ActiveModal | null>(null);
+  const [activeListPicker, setActiveListPicker] = useState<ActiveListPicker | null>(null);
+  const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
@@ -76,6 +108,7 @@ export default function App() {
   const saveTimer = useRef<number | undefined>(undefined);
   const activeFileRef = useRef<VaultFile | null>(null);
   activeFileRef.current = activeFile;
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const refreshFiles = useCallback(async (path: string) => {
     const list = await listVaultFiles(path);
@@ -86,7 +119,11 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const savedSettings = await loadSetting<SybylSettings>("sybylSettings");
-      setSettings(normalizeSettings(savedSettings));
+      const normalized = normalizeSettings(savedSettings);
+      for (const id of KEYCHAIN_PROVIDERS) {
+        normalized.providers[id].apiKey = await migrateAndLoadApiKey(id, normalized.providers[id].apiKey);
+      }
+      setSettings(normalized);
 
       const saved = await getSavedVaultPath();
       if (saved) {
@@ -101,6 +138,9 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen((open) => !open);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        setSwitcherOpen((open) => !open);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -158,7 +198,19 @@ export default function App() {
 
   async function saveSettings(next: SybylSettings) {
     setSettings(next);
-    await saveSetting("sybylSettings", next);
+    const toStore: SybylSettings = {
+      ...next,
+      providers: {
+        ...next.providers,
+        anthropic: { ...next.providers.anthropic, apiKey: "" },
+        openai: { ...next.providers.openai, apiKey: "" },
+        gemini: { ...next.providers.gemini, apiKey: "" }
+      }
+    };
+    await saveSetting("sybylSettings", toStore);
+    await Promise.all(
+      KEYCHAIN_PROVIDERS.map((id) => keychainSet(id, next.providers[id].apiKey).catch(() => {}))
+    );
   }
 
   function lonelogOpts(noWrap = false): LonelogFormatOptions {
@@ -209,7 +261,10 @@ export default function App() {
   }) {
     const file = activeFileRef.current;
     if (!file) return;
-    const { userMessage, format, maxOutputTokens = 512, placement = "cursor" } = options;
+    const { userMessage, format, maxOutputTokens = settings.defaultMaxOutputTokens, placement = "cursor" } = options;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     setLoading(true);
     setStatus("Sybyl: generating...");
@@ -219,19 +274,76 @@ export default function App() {
       const currentBody = view?.state.doc.toString() ?? body;
       const insideCodeBlock = view ? isInsideCodeBlock(view) : false;
       const request = buildRequest(file.fm, userMessage, settings, maxOutputTokens, currentBody);
-      const response = await provider.generate(request);
+      const response = await provider.generate(request, controller.signal);
       const formatted = format(response.text, insideCodeBlock);
       insertFormatted(formatted, placement);
       flashStatus("Sybyl: done.");
     } catch (error) {
-      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      if (error instanceof DOMException && error.name === "AbortError") {
+        flashStatus("Sybyl: cancelled.");
+      } else {
+        flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      }
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
+    }
+  }
+
+  function cancelGeneration() {
+    abortControllerRef.current?.abort();
+  }
+
+  /** Sibling to runGeneration for source-grounded commands: skips the Lonelog note-context injection
+   * that buildRequest performs, but still resolves the system prompt and attaches resolvedSources. */
+  async function runRawGeneration(options: {
+    userMessage: string;
+    maxOutputTokens: number;
+    resolvedSources: GenerationRequest["resolvedSources"];
+    onResult: (text: string) => Promise<void> | void;
+  }) {
+    const file = activeFileRef.current;
+    if (!file) return;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setLoading(true);
+    setStatus("Sybyl: generating...");
+    try {
+      const provider = getProvider(settings);
+      const request: GenerationRequest = {
+        systemPrompt: buildSystemPrompt(file.fm),
+        userMessage: options.userMessage,
+        resolvedSources: options.resolvedSources,
+        temperature: file.fm.temperature ?? settings.defaultTemperature,
+        maxOutputTokens: options.maxOutputTokens
+      };
+      const response = await provider.generate(request, controller.signal);
+      await options.onResult(response.text);
+      flashStatus("Sybyl: done.");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        flashStatus("Sybyl: cancelled.");
+      } else {
+        flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    } finally {
+      setLoading(false);
+      abortControllerRef.current = null;
     }
   }
 
   function openModal(title: string, fields: PromptField[], onSubmit: (values: Record<string, string>) => void) {
     setActiveModal({ title, fields, onSubmit });
+  }
+
+  function openListPicker(title: string, items: ListPickerItem[], onPick: (id: string) => void) {
+    setActiveListPicker({ title, items, onPick });
+  }
+
+  function closeListPicker() {
+    setActiveListPicker(null);
   }
 
   function closeModal() {
@@ -397,6 +509,160 @@ Keep it concise — 4 bullet points, one short sentence each.`;
     );
   }
 
+  async function cmdAddSourceFile() {
+    if (!vaultPath || !activeFileRef.current) return;
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: "Source", extensions: ["pdf", "txt", "md", "markdown"] }]
+    });
+    if (!picked || Array.isArray(picked)) return;
+    try {
+      const destPath = await importSourceFile(vaultPath, picked);
+      const fileName = destPath.split(/[\\/]/).pop() ?? destPath;
+      const ref: SourceRef = {
+        label: fileName.replace(/\.[^.]+$/, ""),
+        mime_type: inferMimeType(fileName),
+        vault_path: destPath
+      };
+      const current = activeFileRef.current.fm.sources ?? [];
+      const next = [...current.filter((s) => s.vault_path !== ref.vault_path), ref];
+      await updateActiveFrontmatter({ sources: next });
+      flashStatus(`Source added: ${ref.label}`);
+    } catch (error) {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  function cmdManageSources() {
+    setSourceManagerOpen(true);
+  }
+
+  async function removeSource(ref: SourceRef) {
+    const file = activeFileRef.current;
+    if (!file) return;
+    const next = (file.fm.sources ?? []).filter((s) => s.vault_path !== ref.vault_path);
+    await updateActiveFrontmatter({ sources: next });
+  }
+
+  function pickSourceThen(noSourcesMessage: string, onPicked: (ref: SourceRef) => void) {
+    const sources = activeFileRef.current?.fm.sources ?? [];
+    if (!sources.length) {
+      flashStatus(noSourcesMessage);
+      return;
+    }
+    if (sources.length === 1) {
+      onPicked(sources[0]);
+      return;
+    }
+    openListPicker(
+      "Choose a source",
+      sources.map((s) => ({ id: s.vault_path, label: s.label, description: s.mime_type })),
+      (id) => {
+        closeListPicker();
+        const ref = sources.find((s) => s.vault_path === id);
+        if (ref) onPicked(ref);
+      }
+    );
+  }
+
+  function cmdAskTheRules() {
+    pickSourceThen("No sources attached to this note. Use Add Source File first.", (ref) => {
+      openModal("Ask the Rules", [{ key: "question", label: "Question", placeholder: "How does Momentum work?" }], async (values) => {
+        const question = values.question?.trim();
+        if (!question) return;
+        closeModal();
+        let resolvedSources;
+        try {
+          resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
+        } catch (error) {
+          flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
+          return;
+        }
+        const ruleset = activeFileRef.current?.fm.ruleset ?? "the game";
+        const prompt = `You are a rules reference for "${ruleset}".
+Answer the following question using only the provided source material.
+Be precise and cite the relevant rule or page section if possible.
+
+Question: ${question}`;
+        await runRawGeneration({
+          userMessage: prompt,
+          maxOutputTokens: 1000,
+          resolvedSources,
+          onResult: (text) => insertFormatted(`> [Rules] ${text.trim().replace(/\n/g, "\n> ")}`, "cursor")
+        });
+      });
+    });
+  }
+
+  function cmdGenerateCharacter() {
+    pickSourceThen("No sources attached to this note. Add a rulebook first via Add Source File.", (ref) => {
+      openModal(
+        "Generate Character",
+        [{ key: "concept", label: "Character concept", optional: true, placeholder: "Leave blank for a random character." }],
+        async (values) => {
+          closeModal();
+          const concept = values.concept?.trim();
+          let resolvedSources;
+          try {
+            resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
+          } catch (error) {
+            flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
+            return;
+          }
+          const ruleset = activeFileRef.current?.fm.ruleset ?? "the game";
+          const formatInstruction = `Format the output as a Lonelog PC tag. Use the multi-line form for complex characters:
+[PC:Name
+  | stat: HP X, Stress Y
+  | gear: item1, item2
+  | trait: value1, value2
+]
+Include all stats and fields exactly as defined by the rules. Output the tag only — no extra commentary.`;
+          const prompt = `Using ONLY the character creation rules in the provided source material, generate a character for "${ruleset}".
+
+Follow the exact character creation procedure described in the rules. Do not invent mechanics not present in the source.
+
+${concept ? `Character concept: ${concept}` : "Generate a random character."}
+
+${formatInstruction}`;
+          await runRawGeneration({
+            userMessage: prompt,
+            maxOutputTokens: 1500,
+            resolvedSources,
+            onResult: (text) => insertFormatted(text.trim(), "cursor")
+          });
+        }
+      );
+    });
+  }
+
+  function cmdDigestSource() {
+    pickSourceThen("No sources attached to this note. Use Add Source File first.", async (ref) => {
+      let resolvedSources;
+      try {
+        resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
+      } catch (error) {
+        flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+      const ruleset = activeFileRef.current?.fm.ruleset ?? "the game";
+      const digestPrompt = `Distill the following source material for use in a solo tabletop RPG session of "${ruleset}".
+
+Extract and condense into a compact reference:
+- Core rules and mechanics relevant to play
+- Key factions, locations, characters, and world facts
+- Tone, genre, and setting conventions
+- Any tables, move lists, or random generators
+
+Be concise and specific. Preserve game-mechanical details. Omit flavor prose and examples.`;
+      await runRawGeneration({
+        userMessage: digestPrompt,
+        maxOutputTokens: 2000,
+        resolvedSources,
+        onResult: async (text) => updateActiveFrontmatter({ game_context: text })
+      });
+    });
+  }
+
   const commands: CommandItem[] = [
     { id: "ask-oracle", label: "Ask Oracle", run: cmdAskOracle },
     { id: "start-scene", label: "Start Scene", run: cmdStartScene },
@@ -407,7 +673,12 @@ Keep it concise — 4 bullet points, one short sentence each.`;
     { id: "what-now", label: "What Now", run: cmdWhatNow },
     { id: "what-can-i-do", label: "What Can I Do", run: cmdWhatCanIDo },
     { id: "update-scene-context", label: "Update Scene Context", run: cmdUpdateSceneContext },
-    { id: "new-session-header", label: "New Session Header", run: cmdNewSessionHeader }
+    { id: "new-session-header", label: "New Session Header", run: cmdNewSessionHeader },
+    { id: "add-source-file", label: "Add Source File", run: cmdAddSourceFile },
+    { id: "manage-sources", label: "Manage Sources", run: cmdManageSources },
+    { id: "ask-the-rules", label: "Ask the Rules", run: cmdAskTheRules },
+    { id: "generate-character", label: "Generate Character", run: cmdGenerateCharacter },
+    { id: "digest-source", label: "Digest Source into Game Context", run: cmdDigestSource }
   ];
 
   function runCommand(cmd: CommandItem) {
@@ -430,13 +701,23 @@ Keep it concise — 4 bullet points, one short sentence each.`;
         <div className="command-bar">
           <span className="active-file-name">{activeFile ? activeFile.name : "No file open"}</span>
           <div className="command-bar-actions">
+            <button disabled={!vaultPath} onClick={() => setSwitcherOpen(true)}>
+              Switch <span className="kbd-hint">Ctrl+O</span>
+            </button>
             <button disabled={!activeFile || loading} onClick={() => setPaletteOpen(true)}>
               Commands <span className="kbd-hint">Ctrl+K</span>
             </button>
             <button onClick={() => setSettingsOpen(true)}>Settings</button>
           </div>
         </div>
-        {status && <div className="status-bar">{status}</div>}
+        {status && (
+          <div className="status-bar">
+            <span>{status}</span>
+            {loading && (
+              <button className="cancel-button" onClick={cancelGeneration}>Cancel</button>
+            )}
+          </div>
+        )}
         {activeFile ? (
           <Editor value={body} onChange={handleBodyChange} editorRef={editorViewRef} />
         ) : (
@@ -462,6 +743,31 @@ Keep it concise — 4 bullet points, one short sentence each.`;
       )}
       {paletteOpen && (
         <CommandPalette commands={commands} onRun={runCommand} onClose={() => setPaletteOpen(false)} />
+      )}
+      {switcherOpen && (
+        <FileSwitcher
+          files={files}
+          onPick={(file) => {
+            setSwitcherOpen(false);
+            selectFile(file);
+          }}
+          onClose={() => setSwitcherOpen(false)}
+        />
+      )}
+      {activeListPicker && (
+        <ListPickerModal
+          title={activeListPicker.title}
+          items={activeListPicker.items}
+          onPick={activeListPicker.onPick}
+          onClose={closeListPicker}
+        />
+      )}
+      {sourceManagerOpen && (
+        <SourceManagerModal
+          sources={activeFile?.fm.sources ?? []}
+          onRemove={removeSource}
+          onClose={() => setSourceManagerOpen(false)}
+        />
       )}
     </div>
   );

@@ -12,7 +12,7 @@ export class AnthropicProvider implements AIProvider {
 
   constructor(private readonly config: AnthropicProviderConfig) {}
 
-  async generate(request: GenerationRequest): Promise<GenerationResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse> {
     this.ensureConfigured();
     const model = request.model || this.config.defaultModel;
     const content: Array<Record<string, unknown>> = [];
@@ -51,7 +51,8 @@ export class AnthropicProvider implements AIProvider {
         temperature: request.temperature,
         system: request.systemPrompt,
         messages: [{ role: "user", content }]
-      })
+      }),
+      signal
     });
 
     if (!response.ok) {

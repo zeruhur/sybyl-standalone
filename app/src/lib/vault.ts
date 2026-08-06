@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { readTextFile, writeTextFile, readDir, exists } from "@tauri-apps/plugin-fs";
+import { readTextFile, writeTextFile, readDir, exists, readFile, writeFile, mkdir } from "@tauri-apps/plugin-fs";
 import { load, Store } from "@tauri-apps/plugin-store";
 import { Buffer } from "buffer";
 import { NoteFrontMatter, VaultFile } from "./types";
@@ -49,7 +49,7 @@ export async function saveSetting<T>(key: string, value: T): Promise<void> {
   await store.set(key, value);
 }
 
-function joinPath(dir: string, name: string): string {
+export function joinPath(dir: string, name: string): string {
   const sep = dir.includes("\\") ? "\\" : "/";
   return `${dir.replace(/[\\/]+$/, "")}${sep}${name}`;
 }
@@ -114,4 +114,27 @@ export async function createVaultFile(
   }
   await writeVaultFile(path, fm, body);
   return readVaultFile(path);
+}
+
+/** Copies an externally-picked file into <vaultPath>/sources/ and returns its new absolute path. */
+export async function importSourceFile(vaultPath: string, pickedPath: string): Promise<string> {
+  const sourcesDir = joinPath(vaultPath, "sources");
+  if (!(await exists(sourcesDir))) {
+    await mkdir(sourcesDir, { recursive: true });
+  }
+  const fileName = pickedPath.split(/[\\/]/).pop() ?? pickedPath;
+  let destPath = joinPath(sourcesDir, fileName);
+  if (await exists(destPath)) {
+    const dotIndex = fileName.lastIndexOf(".");
+    const base = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+    const extension = dotIndex > 0 ? fileName.slice(dotIndex) : "";
+    let suffix = 2;
+    do {
+      destPath = joinPath(sourcesDir, `${base}-${suffix}${extension}`);
+      suffix += 1;
+    } while (await exists(destPath));
+  }
+  const bytes = await readFile(pickedPath);
+  await writeFile(destPath, bytes);
+  return destPath;
 }

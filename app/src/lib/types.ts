@@ -32,6 +32,7 @@ export interface SybylSettings {
     ollama: OllamaProviderConfig;
   };
   defaultTemperature: number;
+  defaultMaxOutputTokens: number;
   lonelogContextDepth: number;
   lonelogWrapCodeBlock: boolean;
   lonelogAutoIncScene: boolean;

@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS: SybylSettings = {
     ollama: { baseUrl: "http://localhost:11434", defaultModel: "llama3" }
   },
   defaultTemperature: 0.9,
+  defaultMaxOutputTokens: 512,
   lonelogContextDepth: 60,
   lonelogWrapCodeBlock: true,
   lonelogAutoIncScene: true

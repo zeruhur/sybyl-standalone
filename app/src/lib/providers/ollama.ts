@@ -16,7 +16,7 @@ export class OllamaProvider implements AIProvider {
 
   constructor(private readonly config: OllamaProviderConfig) {}
 
-  async generate(request: GenerationRequest): Promise<GenerationResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse> {
     const baseUrl = this.config.baseUrl.replace(/\/$/, "");
     const model = request.model || this.config.defaultModel;
     const sourceBlocks = (request.resolvedSources ?? [])
@@ -44,9 +44,11 @@ export class OllamaProvider implements AIProvider {
                 : request.userMessage
             }
           ]
-        })
+        }),
+        signal
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
       throw new Error(`Ollama not reachable at ${baseUrl}. Is it running?`);
     }
 

@@ -39,6 +39,19 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
           </select>
         </label>
 
+        <label className="modal-field">
+          <span>Default max output tokens</span>
+          <input
+            type="number"
+            min={1}
+            value={draft.defaultMaxOutputTokens}
+            onChange={(e) => {
+              const next = Number(e.currentTarget.value) || 1;
+              setDraft((d) => ({ ...d, defaultMaxOutputTokens: next }));
+            }}
+          />
+        </label>
+
         <fieldset>
           <legend>Claude</legend>
           <label className="modal-field">
@@ -155,7 +168,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
         </fieldset>
 
         <p className="settings-note">
-          API keys are stored locally in this device's app data folder. OS keychain integration is planned for a later pass.
+          API keys are stored in this device's OS keychain (Windows Credential Manager / macOS Keychain / Linux Secret Service), not in plain text.
         </p>
 
         <div className="modal-actions">

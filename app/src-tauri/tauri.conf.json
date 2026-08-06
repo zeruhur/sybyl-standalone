@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "app",
+  "productName": "Sybyl",
   "version": "0.1.0",
-  "identifier": "com.utente.app",
+  "identifier": "com.sybyl.standalone",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "app",
-        "width": 800,
-        "height": 600
+        "title": "Sybyl",
+        "width": 1100,
+        "height": 800
       }
     ],
     "security": {
@@ -30,6 +30,8 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "shortDescription": "A neutral third-person arbiter for solo tabletop RPGs, using the Lonelog notation.",
+    "copyright": "Roberto Bisceglie"
   }
 }

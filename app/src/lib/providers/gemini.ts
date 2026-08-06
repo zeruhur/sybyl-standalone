@@ -12,7 +12,7 @@ export class GeminiProvider implements AIProvider {
 
   constructor(private readonly config: GeminiProviderConfig) {}
 
-  async generate(request: GenerationRequest): Promise<GenerationResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse> {
     this.ensureConfigured();
     const model = request.model || this.config.defaultModel;
     const endpoint =
@@ -44,7 +44,8 @@ export class GeminiProvider implements AIProvider {
           maxOutputTokens: request.maxOutputTokens,
           thinkingConfig: { thinkingBudget: 0 }
         }
-      })
+      }),
+      signal
     });
 
     if (!response.ok) {
