@@ -4,9 +4,9 @@
   - Custom random tables
   - Deck of cards
   - Oracles
-  - Custom Deck of Cards (nice-to-have)
-  - Cut-up method mode (nice-to-have)
+  - Custom Deck of Cards
+  - Cut-up method mode
 - Android and iOS support
 - multiplatform builds (and marketplace support?)
+- better UI
 - sync functions (e.g. Google Drive?)
-- 

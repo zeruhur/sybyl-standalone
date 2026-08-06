@@ -19,6 +19,7 @@ import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
 import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
 import { generateWord } from "./lib/toolkit/wordGenerators";
 import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
+import { askOracle, formatOracleResult } from "./lib/toolkit/oracleEngine";
 import { keychainGet, keychainSet } from "./lib/keychain";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
 import { GenerationRequest, NoteFrontMatter, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
@@ -137,6 +138,7 @@ export default function App() {
   const [toolkitOpen, setToolkitOpen] = useState(false);
   const [deckSession, setDeckSession] = useState<DeckSession | null>(null);
   const [tableFiles, setTableFiles] = useState<TableFile[]>([]);
+  const [oracleChaosFactor, setOracleChaosFactor] = useState(5);
   const [status, setStatus] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [version, setVersion] = useState("");
@@ -903,6 +905,15 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     insertFormatted(text, "cursor");
   }
 
+  function toolkitAskOracle(likelihoodId: string): string | undefined {
+    const result = askOracle(likelihoodId, oracleChaosFactor);
+    if (!result) {
+      flashStatus(`Sybyl: unknown oracle likelihood "${likelihoodId}".`);
+      return undefined;
+    }
+    return formatOracleResult(result);
+  }
+
   const commands: CommandItem[] = [
     { id: "ask-oracle", label: "Ask Oracle", run: cmdAskOracle },
     { id: "start-scene", label: "Start Scene", run: cmdStartScene },
@@ -971,6 +982,9 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             onRollTable={toolkitRollTable}
             onRefreshTables={() => vaultPath && refreshTableFiles(vaultPath)}
             onInsert={toolkitInsert}
+            chaosFactor={oracleChaosFactor}
+            onSetChaosFactor={setOracleChaosFactor}
+            onAskOracle={toolkitAskOracle}
           />
         )}
         {status && (

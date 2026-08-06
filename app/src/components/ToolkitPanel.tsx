@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DeckSession, DeckType } from "../lib/toolkit/cardEngine";
 import { WORD_CATEGORIES } from "../lib/toolkit/wordGenerators";
 import { TableFile } from "../lib/toolkit/tables";
+import { ORACLE_LIKELIHOODS } from "../lib/toolkit/oracleEngine";
 
 const QUICK_DICE = ["d4", "d6", "d8", "d10", "d12", "d20", "d%"];
 
@@ -17,6 +18,9 @@ interface ToolkitPanelProps {
   onRollTable: (path: string) => Promise<string | undefined>;
   onRefreshTables: () => void;
   onInsert: (text: string) => void;
+  chaosFactor: number;
+  onSetChaosFactor: (n: number) => void;
+  onAskOracle: (likelihoodId: string) => string | undefined;
 }
 
 export default function ToolkitPanel({
@@ -30,7 +34,10 @@ export default function ToolkitPanel({
   onGenerateWord,
   onRollTable,
   onRefreshTables,
-  onInsert
+  onInsert,
+  chaosFactor,
+  onSetChaosFactor,
+  onAskOracle
 }: ToolkitPanelProps) {
   const [diceExpr, setDiceExpr] = useState("2d6+2");
   const [diceResult, setDiceResult] = useState<string | undefined>(undefined);
@@ -39,6 +46,8 @@ export default function ToolkitPanel({
   const [wordResult, setWordResult] = useState<string | undefined>(undefined);
   const [tablePath, setTablePath] = useState("");
   const [tableResult, setTableResult] = useState<string | undefined>(undefined);
+  const [oracleLikelihood, setOracleLikelihood] = useState("fifty_fifty");
+  const [oracleResult, setOracleResult] = useState<string | undefined>(undefined);
 
   function rollDice(expr: string) {
     const result = onRollDice(expr);
@@ -56,6 +65,10 @@ export default function ToolkitPanel({
   async function rollTable() {
     if (!tablePath) return;
     setTableResult(await onRollTable(tablePath));
+  }
+
+  function askOracle() {
+    setOracleResult(onAskOracle(oracleLikelihood));
   }
 
   return (
@@ -79,6 +92,35 @@ export default function ToolkitPanel({
           <div className="toolkit-result">
             <span>{diceResult}</span>
             <button disabled={!canInsert} onClick={() => onInsert(diceResult)}>Insert</button>
+          </div>
+        )}
+      </div>
+
+      <div className="toolkit-section">
+        <h4>Oracle</h4>
+        <div className="toolkit-row">
+          <select value={oracleLikelihood} onChange={(e) => setOracleLikelihood(e.target.value)}>
+            {ORACLE_LIKELIHOODS.map((l) => (
+              <option key={l.id} value={l.id}>{l.label}</option>
+            ))}
+          </select>
+          <label>
+            CF
+            <input
+              type="number"
+              min={1}
+              max={9}
+              value={chaosFactor}
+              onChange={(e) => onSetChaosFactor(Number(e.target.value))}
+              style={{ width: "3em", marginLeft: "0.25em" }}
+            />
+          </label>
+          <button onClick={askOracle}>Ask</button>
+        </div>
+        {oracleResult && (
+          <div className="toolkit-result">
+            <span style={{ whiteSpace: "pre-line" }}>{oracleResult}</span>
+            <button disabled={!canInsert} onClick={() => onInsert(oracleResult)}>Insert</button>
           </div>
         )}
       </div>
