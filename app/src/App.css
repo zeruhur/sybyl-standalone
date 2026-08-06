@@ -400,6 +400,15 @@ input:focus, select:focus {
   color: var(--text-dim);
   margin-bottom: 4px;
 }
+.field-invalid {
+  border-color: var(--danger) !important;
+}
+.field-error {
+  display: block;
+  font-size: 11px;
+  color: var(--danger);
+  margin-top: 3px;
+}
 
 .modal-actions {
   display: flex;

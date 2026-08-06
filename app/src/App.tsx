@@ -31,7 +31,7 @@ import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, isIns
 import "./App.css";
 
 const NEW_NOTE_FIELDS: PromptField[] = [
-  { key: "pc_name", label: "Character name" },
+  { key: "pc_name", label: "Character name", optional: true },
   { key: "ruleset", label: "Ruleset", optional: true, placeholder: "Ironsworn" },
   { key: "session_type", label: "Type (campaign / one_shot)", defaultValue: "campaign" },
   { key: "game_context", label: "Game context", optional: true }
