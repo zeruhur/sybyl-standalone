@@ -1,17 +1,121 @@
 name: Release
 
+# Triggered by pushing a version tag, e.g. `v0.11.0`.
+#
+# Builds:
+#   - Windows (.msi / .exe)          - always
+#   - macOS, universal binary (.dmg) - always
+#   - Linux (.deb / .rpm / .AppImage)- always
+#   - Android (.apk / .aab)          - always; signed if ANDROID_* secrets are set, otherwise a
+#                                       debug-signed build is produced for internal testing.
+#   - iOS (.ipa)                     - always; requires an Apple Developer account. If the
+#                                       APPLE_* secrets below are not configured, this job builds
+#                                       for the simulator only and does not attach an artifact
+#                                       (there is no way to produce a device-installable,
+#                                       unsigned .ipa).
+#
+# Required repository secrets:
+#   Desktop update signing (optional, only needed if the Tauri updater is enabled):
+#     TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#   Android signing (optional — falls back to a debug keystore otherwise):
+#     ANDROID_KEYSTORE_BASE64   - `base64 -w0 your.jks`
+#     ANDROID_KEYSTORE_PASSWORD
+#     ANDROID_KEY_ALIAS
+#     ANDROID_KEY_PASSWORD
+#   iOS signing (optional — required for a device/App Store build):
+#     APPLE_CERTIFICATE_BASE64      - `base64 -w0 Certificate.p12`
+#     APPLE_CERTIFICATE_PASSWORD
+#     APPLE_PROVISIONING_PROFILE_BASE64 - `base64 -w0 Profile.mobileprovision`
+#     APPLE_TEAM_ID
+#     KEYCHAIN_PASSWORD              - any throwaway password for the temporary CI keychain
+
 on:
   push:
     tags:
-      - "*"
+      - "v*"
   workflow_dispatch:
 
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+permissions:
+  contents: write
 
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.id }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create draft release
+        id: create-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Sybyl ${{ github.ref_name }}
+          draft: true
+          generate_release_notes: true
+
+  desktop:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build and upload
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: ${{ matrix.args }}
+
+  android:
+    needs: create-release
+    runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -21,39 +125,161 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: app/package-lock.json
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
+        working-directory: app
         run: npm ci
 
-      - name: Type check
-        run: npm run check
-
-      - name: Build plugin
-        run: npm run build
-
-      - name: Verify manifest version matches tag
-        shell: bash
-        run: |
-          TAG_NAME="${GITHUB_REF_NAME#v}"
-          MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
-          if [ "$TAG_NAME" != "$MANIFEST_VERSION" ]; then
-            echo "Tag version '$TAG_NAME' does not match manifest version '$MANIFEST_VERSION'."
-            exit 1
-          fi
-
-      - name: Ensure release notes file exists
-        shell: bash
-        run: |
-          if [ ! -f README.md ]; then
-            echo "README.md is missing."
-            exit 1
-          fi
-
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+      - name: Set up JDK
+        uses: actions/setup-java@v4
         with:
-          generate_release_notes: true
-          files: |
-            main.js
-            manifest.json
-            versions.json
+          distribution: zulu
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Initialize Android project
+        working-directory: app
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: npm run tauri -- android init
+
+      - name: Configure signing
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        working-directory: app
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          cat > src-tauri/gen/android/keystore.properties <<EOF
+          password=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=$RUNNER_TEMP/release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          EOF
+
+      - name: Build Android APK/AAB
+        working-directory: app
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: npm run tauri -- android build
+
+      - name: Upload Android artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            $(find app/src-tauri/gen/android -type f \( -name "*.apk" -o -name "*.aab" \)) \
+            --clobber
+
+  ios:
+    needs: create-release
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Initialize iOS project
+        working-directory: app
+        run: npm run tauri -- ios init
+
+      - name: Import signing certificate and provisioning profile
+        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 -d > "$CERT_PATH"
+          echo "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 -d > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Build signed iOS app
+        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+        working-directory: app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run tauri -- ios build --export-method app-store-connect
+
+      - name: Build unsigned iOS simulator app (no Apple signing secrets configured)
+        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 == '' }}
+        working-directory: app
+        run: npm run tauri -- ios build --target aarch64-sim
+
+      - name: Upload iOS artifact
+        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            $(find app/src-tauri/gen/apple -type f -name "*.ipa") \
+            --clobber
+
+  publish-release:
+    needs: [create-release, desktop, android, ios]
+    if: always() && needs.desktop.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"

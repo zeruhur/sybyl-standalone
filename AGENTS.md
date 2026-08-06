@@ -1,34 +1,54 @@
 # Repository Guidelines
 
+Sybyl is a standalone desktop (and, going forward, mobile) app: a neutral, third-person-only
+arbiter for solo tabletop RPGs, built on Tauri + React + TypeScript + CodeMirror 6. All active
+development happens under [`app/`](/app).
+
+The former Obsidian plugin implementation has been retired; consult git history before this
+cleanup if you need it as a porting reference.
+
 ## Project Structure & Module Organization
-This repository is currently spec-first. The active documents are [`sybyl-plugin-spec-lonelog.md`](/C:/Users/utente/Documents/GitHub/sybyl/sybyl-plugin-spec-lonelog.md) and [`lonelog.md`](/C:/Users/utente/Documents/GitHub/sybyl/lonelog.md). The implementation target is an Obsidian plugin with this layout:
 
-- `src/main.ts`: plugin entry point
-- `src/commands.ts`: command registration and flows
-- `src/providers/`: provider adapters (`gemini.ts`, `openai.ts`, `anthropic.ts`, `ollama.ts`)
-- `src/frontmatter.ts`, `src/promptBuilder.ts`, `src/editor.ts`, `src/settings.ts`, `src/types.ts`
-- Root files: `manifest.json`, `package.json`, `tsconfig.json`, `esbuild.config.mjs`
-
-Keep new code aligned with the spec unless you are intentionally revising the spec in the same change.
+- `app/src/lib/` — provider-agnostic game logic (Lonelog parser/formatter, prompt builder,
+  provider adapters, solo-toolkit engines, vault access)
+- `app/src/components/` — React UI components
+- `app/src-tauri/` — Rust/Tauri shell (commands, plugin config, mobile `gen/` targets)
+- `lonelog.md`, `lonelog-dice-notation-addon.md`, `lonelog-cards-addon.md` — the Lonelog notation
+  spec; parsing/formatting in `app/src/lib/lonelog/` must stay compatible with it
+- `CLAUDE.md` — detailed, living architecture notes for this repo; read it before making
+  non-trivial changes
 
 ## Build, Test, and Development Commands
-The scaffold is not committed yet, but the spec assumes a standard TypeScript + esbuild Obsidian workflow.
 
-- `npm install`: install TypeScript, esbuild, and Obsidian typings
-- `npx tsc --noEmit`: run strict type-checking
-- `node esbuild.config.mjs`: build `src/main.ts` into `main.js`
-- `node esbuild.config.mjs production`: create a minified production build
+Run all commands from `app/`:
 
-If you add `package.json` scripts, keep them conventional: `build`, `dev`, `check`, `test`.
+- `npm install` — install dependencies
+- `npm run tauri dev` — run the desktop app with hot reload
+- `npx tsc --noEmit` — type-check
+- `npm run build` — type-check + build the frontend
+- `npm run tauri build` — full desktop build (needs Rust + platform toolchain)
+- `cd src-tauri && cargo check` — fast Rust-only check
 
 ## Coding Style & Naming Conventions
-Use TypeScript in strict mode, ES module syntax, and raw `fetch` for provider calls. Prefer 2-space indentation, semicolons, double quotes, and small focused modules. Use `PascalCase` for classes/interfaces, `camelCase` for functions and variables, and lowercase file names matching the spec such as `promptBuilder.ts` and `frontmatter.ts`.
+
+TypeScript in strict mode, ES module syntax, 2-space indentation, semicolons, double quotes,
+small focused modules. `PascalCase` for classes/interfaces/React components, `camelCase` for
+functions and variables.
 
 ## Testing Guidelines
-No test runner is committed yet. When implementation begins, add unit tests for pure logic first: `promptBuilder`, frontmatter helpers, Lonelog parser/formatter, and provider request mapping. Name tests after the module under test, for example `promptBuilder.test.ts`. At minimum, run `npx tsc --noEmit` before opening a PR.
+
+No automated test runner is committed yet. At minimum, run `npx tsc --noEmit` and
+`npm run build` (from `app/`) before opening a PR; run `cargo check` (from `app/src-tauri/`) for
+Rust-side changes.
 
 ## Commit & Pull Request Guidelines
-Current history uses short imperative subjects (`Initial commit`). Follow that pattern: `Add Gemini provider`, `Fix Lonelog context precedence`. Keep commits focused. PRs should include a short summary, affected files or commands, linked issues if any, and screenshots or sample note output for UI or formatting changes.
+
+Keep commits focused with short imperative subjects (e.g. `Add Android release workflow`). PRs
+should include a short summary, affected files/commands, linked issues if any, and screenshots
+for UI changes.
 
 ## Security & Configuration Tips
-Do not commit API keys, vault contents, or provider secrets. Keep credentials in local plugin settings only. When changing provider behavior or frontmatter schema, update the spec and any user-facing notices in the same PR.
+
+Do not commit API keys or vault contents. Provider API keys are stored in the OS keychain via
+`app/src/lib/keychain.ts`, never in plaintext settings files. When changing provider behavior or
+the Lonelog frontmatter schema, update the relevant spec doc in the same PR.

@@ -2,73 +2,89 @@
 
 ![cover](/cover.png)
 
-[![GitHub tag (Latest by date)](https://img.shields.io/github/v/tag/zeruhur/sybyl)](https://github.com/zeruhur/sybyl/releases) ![GitHub all releases](https://img.shields.io/github/downloads/zeruhur/sybyl/total)
+[![GitHub tag (Latest by date)](https://img.shields.io/github/v/tag/zeruhur/sybyl-standalone)](https://github.com/zeruhur/sybyl-standalone/releases) ![GitHub all releases](https://img.shields.io/github/downloads/zeruhur/sybyl-standalone/total)
 
-Sybyl is an Obsidian plugin for solo tabletop play with provider-backed AI assistance and Lonelog-aware note formatting.
+Sybyl is a standalone desktop app for solo tabletop play with provider-backed AI assistance and
+Lonelog-aware note formatting, built on Tauri + React + CodeMirror 6.
 
-The plugin enforces a strict neutral, third-person, non-directive AI persona: it never narrates the player character, never uses second person, never invents lore. It is a referee tool, not a storyteller.
+It enforces a strict neutral, third-person, non-directive AI persona: it never narrates the
+player character, never uses second person, never invents lore. It is a referee tool, not a
+storyteller.
 
-**New to Sybyl?** Start with the **[Tutorial](TUTORIAL.md)** — a step-by-step walkthrough from installation to your first scene.
+## Features
 
-For a complete reference of every command, frontmatter field, and provider option see **[USER_GUIDE.md](USER_GUIDE.md)**.
+- A vault of plain Markdown notes with Lonelog frontmatter and syntax highlighting (scene
+  headers, tags, dice/card notation)
+- Full GFM editing (strikethrough, tables, task lists, footnotes) via a formatting toolbar
+- An in-app solo toolkit: dice roller, card decks (standard + Tarot), custom image decks, a
+  Yes/No oracle with Chaos Factor, random tables, word generators, and a cut-up text tool
+- Provider API keys stored in the OS keychain, never in plaintext settings
+- Light and dark themes
 
 ## Commands
 
 - **Start Scene** — generates a scene opening
 - **Declare Action** — interprets a declared action and dice outcome
-- **Ask Oracle** — interprets oracle answers (yes/no, fate, or custom mode)
+- **Ask Oracle** — interprets oracle answers (LLM-driven; distinct from the in-app deterministic
+  Oracle tool in the Toolkit panel)
 - **Interpret Oracle Roll** — narrates the meaning of a dice result
 - **What Now** — suggests complications or consequences
 - **What Can I Do** — lists available moves/actions given the current scene
 - **Expand Scene** — expands the current scene into prose
-- **Ask the Rules** — queries the active ruleset for rules clarifications
-- **Adventure Seed** — generates a pre-session adventure premise
-- **Generate Character** — generates a character concept
-- **Digest Source into Game Context** — distils source documents into a compact `game_context` stored in frontmatter
-- **Insert Note Frontmatter** — scaffolds a complete frontmatter block interactively
-- **Add/Manage Sources** — manages source files attached to a note
 - **Update Scene Context** — parses the Lonelog session log into `scene_context`
+- **Insert Campaign Header** — scaffolds the campaign title + first session/scene skeleton
 - **New Session Header** — inserts a Lonelog session break
+- **Edit Campaign Info** — edits a note's campaign frontmatter fields
+- **Insert Quick Scene** — inserts a bare scene skeleton for manual, non-AI play
+- **Add Source File** / **Manage Sources** — attaches and manages source files on a note
+- **Ask the Rules** — queries the active ruleset for rules clarifications
+- **Generate Character** — generates a character concept
+- **Digest Source into Game Context** — distils source documents into a compact `game_context`
+  stored in frontmatter
+
+Import Note, Export Note, and the Toolkit panel live outside the command palette (Ctrl+K) since
+they aren't tied to a single active note.
 
 ## Supported Providers
 
-- Gemini
-- OpenAI
 - Anthropic (Claude)
-- OpenRouter (free tier)
+- OpenAI
+- Gemini
 - Ollama (local)
 
 ## How It Works
 
 Sybyl works inside the active note. Each request is stateless and built from:
 
-- note frontmatter (`game`, `pc_name`, `game_context`, `scene_context`, etc.)
+- note frontmatter (`ruleset`, `pc_name`, `game_context`, `scene_context`, etc.)
 - the current scene context
 - the command-specific prompt
 
-Source files are distilled once into a compact `game_context` block via the **Digest Source into Game Context** command. That result is reused on every subsequent request without per-request file overhead.
+Source files are distilled once into a compact `game_context` block via the **Digest Source into
+Game Context** command, then reused on every subsequent request without per-request file
+overhead.
 
 ## Development
 
 ```bash
-npm ci
-npm run check
-npm run build
+cd app
+npm install
+npm run tauri dev
 ```
 
-## BRAT Release Flow
+- `npx tsc --noEmit` — type-check
+- `npm run build` — type-check + build the frontend
+- `npm run tauri build` — full desktop build (needs Rust + a platform toolchain)
+- `cd src-tauri && cargo check` — fast Rust-only check
 
-BRAT installs plugin builds from GitHub releases. The release job uploads:
+## Releases
 
-- `main.js`
-- `manifest.json`
-- `versions.json`
+Pushing a tag (e.g. `v0.11.0`) triggers `.github/workflows/release.yml`, which builds installers
+for Windows, macOS, and Linux, plus Android and iOS packages, and attaches them to a GitHub
+Release. See that workflow for exact artifact names and signing requirements.
 
-To publish a BRAT-installable build:
+## Lonelog Notation
 
-1. Update `manifest.json` and `package.json` to the release version.
-2. Update `versions.json` with the plugin version and minimum Obsidian version.
-3. Commit and push to GitHub.
-4. Create and push a matching tag, for example `0.2.0`.
-
-The release workflow verifies that the tag version matches `manifest.json`, builds the plugin, and attaches the release assets automatically.
+`lonelog.md` and its dice/card notation addons (`lonelog-dice-notation-addon.md`,
+`lonelog-cards-addon.md`) define the note format Sybyl reads and writes. Parsing/formatting in
+`app/src/lib/lonelog/` must stay compatible with it.

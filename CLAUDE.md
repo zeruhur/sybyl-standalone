@@ -4,9 +4,8 @@ Sybyl is a solo-TTRPG arbiter tool: a neutral, third-person-only assistant that 
 
 ## Repo layout
 
-- `src/` — the **original Obsidian plugin** (commands.ts, promptBuilder.ts, providers/, lonelog/parser+formatter, modals.ts, settings.ts). Left untouched as a porting reference. Do not edit unless explicitly asked to change the Obsidian plugin itself.
-- `app/` — the **new standalone app**: Tauri + React + TypeScript + CodeMirror 6. This is where active development happens.
-- `sybyl-plugin-spec-lonelog.md`, `lonelog.md` — spec docs for the Lonelog notation itself (parsing must stay 100% compatible with `src/lonelog/`).
+- `app/` — the **standalone app**: Tauri + React + TypeScript + CodeMirror 6. This is where all active development happens. (The original Obsidian plugin this was ported from — `src/`, `main.js`, `manifest.json`, esbuild config, and its own README/TUTORIAL/USER_GUIDE/spec doc — was removed from the repo once the migration completed; see git history before this cleanup if you need it as a porting reference.)
+- `lonelog.md` — spec doc for the Lonelog notation itself (parsing must stay 100% compatible with `app/src/lib/lonelog/`).
 - `lonelog-dice-notation-addon.md`, `lonelog-cards-addon.md` — formal grammar add-ons for dice expressions and card identities inside `d:` fields. Both are explicitly "grammar, not engine" specs (how to *write* notation, not how to resolve it) — see `app/src/lib/lonelog/diceNotation.ts`/`cardNotation.ts`.
 
 ## Standalone app architecture (`app/`)

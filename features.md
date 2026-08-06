@@ -1,4 +1,1 @@
-- Android and iOS support
-- multiplatform builds (and marketplace support?)
-- better UI
 - sync functions (e.g. Google Drive?)
