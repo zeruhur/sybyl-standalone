@@ -12,7 +12,8 @@ export const DEFAULT_SETTINGS: SybylSettings = {
   defaultMaxOutputTokens: 512,
   lonelogContextDepth: 60,
   lonelogWrapCodeBlock: true,
-  lonelogAutoIncScene: true
+  lonelogAutoIncScene: true,
+  theme: "dark"
 };
 
 export function normalizeSettings(data: unknown): SybylSettings {

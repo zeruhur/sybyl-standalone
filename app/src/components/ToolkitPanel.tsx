@@ -8,6 +8,18 @@ import { CutUpMode } from "../lib/toolkit/cutup";
 
 const QUICK_DICE = ["d4", "d6", "d8", "d10", "d12", "d20", "d%"];
 
+type ToolkitTab = "dice" | "oracle" | "cards" | "custom-deck" | "words" | "cutup" | "tables";
+
+const TOOLKIT_TABS: { id: ToolkitTab; label: string }[] = [
+  { id: "dice", label: "Dice" },
+  { id: "oracle", label: "Oracle" },
+  { id: "cards", label: "Cards" },
+  { id: "custom-deck", label: "Custom Deck" },
+  { id: "words", label: "Words" },
+  { id: "cutup", label: "Cut-up" },
+  { id: "tables", label: "Tables" }
+];
+
 interface ToolkitPanelProps {
   deckSession: DeckSession | null;
   tableFiles: TableFile[];
@@ -72,6 +84,7 @@ export default function ToolkitPanel({
   const [cutupMode, setCutupMode] = useState<CutUpMode>("words");
   const [cutupSourceTable, setCutupSourceTable] = useState("");
   const [cutupResult, setCutupResult] = useState<string | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState<ToolkitTab>("dice");
 
   function rollDice(expr: string) {
     const result = onRollDice(expr);
@@ -118,6 +131,19 @@ export default function ToolkitPanel({
 
   return (
     <div className="toolkit-panel">
+      <div className="toolkit-tabs">
+        {TOOLKIT_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            className={`toolkit-tab${activeTab === tab.id ? " active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "dice" && (
       <div className="toolkit-section">
         <h4>Dice</h4>
         <div className="toolkit-row">
@@ -140,7 +166,9 @@ export default function ToolkitPanel({
           </div>
         )}
       </div>
+      )}
 
+      {activeTab === "oracle" && (
       <div className="toolkit-section">
         <h4>Oracle</h4>
         <div className="toolkit-row">
@@ -169,7 +197,9 @@ export default function ToolkitPanel({
           </div>
         )}
       </div>
+      )}
 
+      {activeTab === "cards" && (
       <div className="toolkit-section">
         <h4>Cards</h4>
         <div className="toolkit-row">
@@ -193,7 +223,9 @@ export default function ToolkitPanel({
           </div>
         )}
       </div>
+      )}
 
+      {activeTab === "custom-deck" && (
       <div className="toolkit-section">
         <h4>Custom Deck</h4>
         {deckFolders.length === 0 ? (
@@ -227,7 +259,9 @@ export default function ToolkitPanel({
           </>
         )}
       </div>
+      )}
 
+      {activeTab === "words" && (
       <div className="toolkit-section">
         <h4>Words</h4>
         <div className="toolkit-row">
@@ -245,7 +279,9 @@ export default function ToolkitPanel({
           </div>
         )}
       </div>
+      )}
 
+      {activeTab === "cutup" && (
       <div className="toolkit-section">
         <h4>Cut-up</h4>
         <textarea
@@ -280,7 +316,9 @@ export default function ToolkitPanel({
           </div>
         )}
       </div>
+      )}
 
+      {activeTab === "tables" && (
       <div className="toolkit-section">
         <h4>Tables</h4>
         {tableFiles.length === 0 ? (
@@ -307,6 +345,7 @@ export default function ToolkitPanel({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

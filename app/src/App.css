@@ -17,8 +17,32 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* Warm-parchment light theme — pairs with the serif "old book" font; the violet
+   accent carries through both themes as the throughline, only the neutrals flip. */
+:root[data-theme="light"] {
+  --bg: #f6f3ee;
+  --bg-elevated: #ffffff;
+  --bg-panel: #ece7de;
+  --border: #ddd6c9;
+  --text: #221f1a;
+  --text-dim: #6e6558;
+  --accent: #6d4fd1;
+  --accent-dim: #5a3fc0;
+  --danger: #c0392b;
+}
+
 * {
   box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-dim);
+  color: #fff;
 }
 
 html, body, #root {
@@ -197,10 +221,21 @@ html, body, #root {
 .command-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   padding: 10px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
+}
+
+.sidebar-toggle {
+  display: none;
+  font-size: 16px;
+  padding: 4px 8px;
+}
+
+.theme-toggle {
+  font-size: 15px;
+  padding: 4px 10px;
 }
 
 .campaign-info-panel {
@@ -257,10 +292,38 @@ html, body, #root {
 .toolkit-panel {
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
-  padding: 12px 20px 16px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  padding: 0 20px 16px;
+}
+
+.toolkit-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 4px;
+  margin: 0 -20px 14px;
+  padding: 10px 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.toolkit-tab {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 6px 10px 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.toolkit-tab:hover {
+  color: var(--text);
+}
+
+.toolkit-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .toolkit-section h4 {
@@ -337,6 +400,39 @@ html, body, #root {
   margin: 2px 2px;
 }
 
+.format-more {
+  position: relative;
+}
+
+.format-more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  padding: 4px;
+}
+
+.format-more-menu button {
+  justify-content: flex-start;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 6px 8px;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.format-more-menu button:hover {
+  background: var(--bg-elevated);
+}
+
 .active-file-name {
   font-weight: 600;
   color: var(--text-dim);
@@ -345,7 +441,9 @@ html, body, #root {
 
 .command-bar-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 
 .status-bar {
@@ -640,4 +738,29 @@ input:focus, select:focus {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* Narrow-viewport layout: sidebar goes off-canvas, toggled by the hamburger
+   button in the command bar. CSS-only breakpoint — no JS media-query state. */
+@media (max-width: 720px) {
+  .sidebar-toggle {
+    display: inline-flex;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .main-pane {
+    width: 100%;
+  }
 }

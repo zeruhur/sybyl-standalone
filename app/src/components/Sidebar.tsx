@@ -11,6 +11,7 @@ interface SidebarProps {
   onDeleteNote: (file: VaultFile) => void;
   vaultPath: string | null;
   version: string;
+  open: boolean;
 }
 
 function FileRow({
@@ -55,13 +56,14 @@ export default function Sidebar({
   onExportNote,
   onDeleteNote,
   vaultPath,
-  version
+  version,
+  open
 }: SidebarProps) {
   const campaigns = files.filter((f) => f.fm.session_type !== "one_shot");
   const oneShots = files.filter((f) => f.fm.session_type === "one_shot");
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${open ? " sidebar-open" : ""}`}>
       <div className="sidebar-header">
         <span className="vault-path" title={vaultPath ?? ""}>{vaultPath ? vaultPath.split(/[\\/]/).pop() : "No vault"}</span>
         <button className="link-button" onClick={onChangeVault}>Change vault</button>

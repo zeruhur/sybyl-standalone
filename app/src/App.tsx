@@ -137,6 +137,7 @@ export default function App() {
   const [activeFile, setActiveFile] = useState<VaultFile | null>(null);
   const [body, setBody] = useState("");
   const [settings, setSettings] = useState<SybylSettings>(DEFAULT_SETTINGS);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<ActiveModal | null>(null);
@@ -198,6 +199,10 @@ export default function App() {
     })();
     getVersion().then(setVersion).catch(() => {});
   }, [refreshFiles, refreshTableFiles, refreshDeckFolders]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme;
+  }, [settings.theme]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -434,6 +439,10 @@ export default function App() {
     await Promise.all(
       KEYCHAIN_PROVIDERS.map((id) => keychainSet(id, next.providers[id].apiKey).catch(() => {}))
     );
+  }
+
+  function toggleTheme() {
+    saveSettings({ ...settings, theme: settings.theme === "dark" ? "light" : "dark" });
   }
 
   function lonelogOpts(noWrap = false): LonelogFormatOptions {
@@ -1068,11 +1077,22 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         onDeleteNote={setDeleteTarget}
         vaultPath={vaultPath}
         version={version}
+        open={sidebarOpen}
       />
       <main className="main-pane">
         <div className="command-bar">
+          <button className="sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)} title="Toggle vault sidebar">
+            ☰
+          </button>
           <span className="active-file-name">{activeFile ? activeFile.name : "No file open"}</span>
           <div className="command-bar-actions">
+            <button
+              className="theme-toggle"
+              onClick={toggleTheme}
+              title={settings.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            >
+              {settings.theme === "dark" ? "☀" : "☾"}
+            </button>
             <button disabled={!vaultPath} onClick={() => setSwitcherOpen(true)}>
               Switch <span className="kbd-hint">Ctrl+O</span>
             </button>

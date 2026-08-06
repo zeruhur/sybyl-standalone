@@ -1,6 +1,7 @@
 export type ProviderID = "gemini" | "openai" | "anthropic" | "ollama";
 export type OracleMode = "yes-no" | "fate" | "custom";
 export type SessionType = "campaign" | "one_shot";
+export type Theme = "dark" | "light";
 
 export interface GeminiProviderConfig {
   apiKey: string;
@@ -36,6 +37,7 @@ export interface SybylSettings {
   lonelogContextDepth: number;
   lonelogWrapCodeBlock: boolean;
   lonelogAutoIncScene: boolean;
+  theme: Theme;
   vaultPath?: string;
 }
 
