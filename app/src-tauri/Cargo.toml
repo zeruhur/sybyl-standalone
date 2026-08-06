@@ -1,6 +1,6 @@
 [package]
 name = "Sybyl"
-version = "0.8.0"
+version = "0.9.0"
 description = "A neutral third-person arbiter for solo tabletop RPGs, using the Lonelog notation"
 authors = ["Roberto Bisceglie"]
 edition = "2021"

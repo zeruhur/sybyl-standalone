@@ -3,6 +3,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
+import { GFM } from "@lezer/markdown";
 import { basicSetup } from "codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { lonelogHighlight } from "../lib/lonelogHighlight";
@@ -34,7 +35,7 @@ export default function Editor({ value, onChange, editorRef }: EditorProps) {
           ...defaultKeymap,
           ...historyKeymap
         ]),
-        markdown(),
+        markdown({ extensions: GFM }),
         lonelogHighlight(),
         oneDark,
         EditorView.lineWrapping,

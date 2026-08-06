@@ -62,6 +62,27 @@ export function togglePrefixLine(view: EditorView, prefix: string): void {
   view.focus();
 }
 
+/** Inserts an auto-numbered footnote reference at the cursor (`[^n]`) and appends a matching
+ * definition stub (`[^n]: `) at the end of the document, with the cursor left there ready to
+ * type the note. `n` is one past the highest existing `[^N]` reference in the document. */
+export function insertFootnote(view: EditorView): void {
+  const doc = view.state.doc.toString();
+  const refs = [...doc.matchAll(/\[\^(\d+)\]/g)].map((m) => parseInt(m[1], 10));
+  const n = refs.length > 0 ? Math.max(...refs) + 1 : 1;
+  const marker = `[^${n}]`;
+  const defText = `\n[^${n}]: `;
+  const pos = view.state.selection.main.to;
+  const docLength = doc.length;
+  view.dispatch({
+    changes: [
+      { from: pos, insert: marker },
+      { from: docLength, insert: defText }
+    ],
+    selection: { anchor: docLength + marker.length + defText.length }
+  });
+  view.focus();
+}
+
 export function isInsideCodeBlock(view: EditorView, pos?: number): boolean {
   const checkPos = pos ?? view.state.selection.main.head;
   const checkLine = view.state.doc.lineAt(checkPos).number;

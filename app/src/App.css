@@ -316,6 +316,8 @@ html, body, #root {
 
 .format-toolbar {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
   padding: 6px 20px;
   border-bottom: 1px solid var(--border);
@@ -326,6 +328,13 @@ html, body, #root {
   padding: 4px 10px;
   font-size: 13px;
   min-width: 30px;
+}
+
+.format-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 2px 2px;
 }
 
 .active-file-name {

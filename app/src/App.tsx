@@ -47,7 +47,7 @@ import {
   formatSuggestConsequence,
   LonelogFormatOptions
 } from "./lib/lonelog/formatter";
-import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, isInsideCodeBlock, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
+import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, insertFootnote, isInsideCodeBlock, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
 import "./App.css";
 
 const NEW_NOTE_FIELDS: PromptField[] = [
@@ -361,6 +361,62 @@ export default function App() {
       if (!url) return;
       wrapSelection(view, "[", `](${url})`);
     });
+  }
+
+  function formatStrikethrough() {
+    const view = editorViewRef.current;
+    if (view) wrapSelection(view, "~~", "~~");
+  }
+
+  function formatBlockquote() {
+    const view = editorViewRef.current;
+    if (view) togglePrefixLine(view, "> ");
+  }
+
+  function formatBulletList() {
+    const view = editorViewRef.current;
+    if (view) togglePrefixLine(view, "- ");
+  }
+
+  function formatNumberedList() {
+    const view = editorViewRef.current;
+    if (view) togglePrefixLine(view, "1. ");
+  }
+
+  function formatTaskList() {
+    const view = editorViewRef.current;
+    if (view) togglePrefixLine(view, "- [ ] ");
+  }
+
+  function formatImage() {
+    const view = editorViewRef.current;
+    if (!view) return;
+    openModal("Insert Image", [{ key: "url", label: "Image URL", placeholder: "https://..." }], (values) => {
+      closeModal();
+      const url = values.url?.trim();
+      if (!url) return;
+      wrapSelection(view, "![", `](${url})`);
+    });
+  }
+
+  function formatTable() {
+    const view = editorViewRef.current;
+    if (view) insertAtCursor(view, "| Header | Header |\n| --- | --- |\n| Cell | Cell |");
+  }
+
+  function formatHorizontalRule() {
+    const view = editorViewRef.current;
+    if (view) insertAtCursor(view, "---");
+  }
+
+  function formatFootnote() {
+    const view = editorViewRef.current;
+    if (view) insertFootnote(view);
+  }
+
+  function formatCodeBlock() {
+    const view = editorViewRef.current;
+    if (view) wrapSelection(view, "```\n", "\n```");
   }
 
   async function saveSettings(next: SybylSettings) {
@@ -1067,9 +1123,19 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             <FormatToolbar
               onBold={formatBold}
               onItalic={formatItalic}
+              onStrikethrough={formatStrikethrough}
               onCode={formatCode}
+              onCodeBlock={formatCodeBlock}
               onHeading={formatHeading}
+              onBlockquote={formatBlockquote}
+              onBulletList={formatBulletList}
+              onNumberedList={formatNumberedList}
+              onTaskList={formatTaskList}
               onLink={formatLink}
+              onImage={formatImage}
+              onTable={formatTable}
+              onHorizontalRule={formatHorizontalRule}
+              onFootnote={formatFootnote}
             />
             <Editor value={body} onChange={handleBodyChange} editorRef={editorViewRef} />
           </>
