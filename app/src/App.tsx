@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { open } from "@tauri-apps/plugin-dialog";
+import { getVersion } from "@tauri-apps/api/app";
 import Editor from "./components/Editor";
 import Sidebar from "./components/Sidebar";
 import SettingsModal from "./components/SettingsModal";
@@ -103,6 +104,7 @@ export default function App() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [version, setVersion] = useState("");
 
   const editorViewRef = useRef<EditorView | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
@@ -131,6 +133,7 @@ export default function App() {
         await refreshFiles(saved);
       }
     })();
+    getVersion().then(setVersion).catch(() => {});
   }, [refreshFiles]);
 
   useEffect(() => {
@@ -696,6 +699,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         onChangeVault={handleChangeVault}
         onNewNote={() => setNewNoteOpen(true)}
         vaultPath={vaultPath}
+        version={version}
       />
       <main className="main-pane">
         <div className="command-bar">

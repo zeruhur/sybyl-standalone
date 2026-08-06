@@ -7,6 +7,7 @@ interface SidebarProps {
   onChangeVault: () => void;
   onNewNote: () => void;
   vaultPath: string | null;
+  version: string;
 }
 
 function FileRow({ file, active, onSelect }: { file: VaultFile; active: boolean; onSelect: () => void }) {
@@ -19,7 +20,7 @@ function FileRow({ file, active, onSelect }: { file: VaultFile; active: boolean;
   );
 }
 
-export default function Sidebar({ files, activePath, onSelect, onChangeVault, onNewNote, vaultPath }: SidebarProps) {
+export default function Sidebar({ files, activePath, onSelect, onChangeVault, onNewNote, vaultPath, version }: SidebarProps) {
   const campaigns = files.filter((f) => f.fm.session_type !== "one_shot");
   const oneShots = files.filter((f) => f.fm.session_type === "one_shot");
 
@@ -46,6 +47,8 @@ export default function Sidebar({ files, activePath, onSelect, onChangeVault, on
           <FileRow key={f.path} file={f} active={f.path === activePath} onSelect={() => onSelect(f)} />
         ))}
       </div>
+
+      <div className="sidebar-footer">Sybyl{version ? ` v${version}` : ""}</div>
     </aside>
   );
 }

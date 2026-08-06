@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { ProviderID, SybylSettings } from "../lib/types";
 
 interface SettingsModalProps {
@@ -16,6 +17,11 @@ const PROVIDER_LABELS: Record<ProviderID, string> = {
 
 export default function SettingsModal({ settings, onSave, onClose }: SettingsModalProps) {
   const [draft, setDraft] = useState<SybylSettings>(structuredClone(settings));
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    getVersion().then(setVersion).catch(() => {});
+  }, []);
 
   function save() {
     onSave(draft);
@@ -25,7 +31,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal-panel settings-panel" onMouseDown={(e) => e.stopPropagation()}>
-        <h2>Settings</h2>
+        <h2>Settings {version && <span className="version-tag">v{version}</span>}</h2>
 
         <label className="modal-field">
           <span>Active provider</span>
