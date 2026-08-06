@@ -116,6 +116,10 @@ jobs:
     needs: create-release
     runs-on: ubuntu-latest
     continue-on-error: true
+    env:
+      # `if:` conditions can't reference `secrets` directly, so route the presence
+      # check through env first.
+      ANDROID_SIGNING_CONFIGURED: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -164,7 +168,7 @@ jobs:
         run: npm run tauri -- android init
 
       - name: Configure signing
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_SIGNING_CONFIGURED == 'true' }}
         working-directory: app
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -198,6 +202,10 @@ jobs:
     needs: create-release
     runs-on: macos-latest
     continue-on-error: true
+    env:
+      # `if:` conditions can't reference `secrets` directly, so route the presence
+      # check through env first.
+      APPLE_SIGNING_CONFIGURED: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -228,7 +236,7 @@ jobs:
         run: npm run tauri -- ios init
 
       - name: Import signing certificate and provisioning profile
-        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+        if: ${{ env.APPLE_SIGNING_CONFIGURED == 'true' }}
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -253,19 +261,19 @@ jobs:
           cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/
 
       - name: Build signed iOS app
-        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+        if: ${{ env.APPLE_SIGNING_CONFIGURED == 'true' }}
         working-directory: app
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run tauri -- ios build --export-method app-store-connect
 
       - name: Build unsigned iOS simulator app (no Apple signing secrets configured)
-        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 == '' }}
+        if: ${{ env.APPLE_SIGNING_CONFIGURED == 'false' }}
         working-directory: app
         run: npm run tauri -- ios build --target aarch64-sim
 
       - name: Upload iOS artifact
-        if: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' }}
+        if: ${{ env.APPLE_SIGNING_CONFIGURED == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
