@@ -3,8 +3,10 @@
   - Random generators
   - Custom random tables
   - Deck of cards
+  - Oracles
   - Custom Deck of Cards (nice-to-have)
   - Cut-up method mode (nice-to-have)
 - Android and iOS support
 - multiplatform builds (and marketplace support?)
 - sync functions (e.g. Google Drive?)
+- 

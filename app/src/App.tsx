@@ -13,7 +13,12 @@ import SourceManagerModal from "./components/SourceManagerModal";
 import FormatToolbar from "./components/FormatToolbar";
 import CampaignInfoPanel from "./components/CampaignInfoPanel";
 import ConfirmModal from "./components/ConfirmModal";
+import ToolkitPanel from "./components/ToolkitPanel";
 import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, listVaultFiles, loadSetting, pickVaultFolder, saveSetting, writeVaultFile } from "./lib/vault";
+import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
+import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
+import { generateWord } from "./lib/toolkit/wordGenerators";
+import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
 import { keychainGet, keychainSet } from "./lib/keychain";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
 import { GenerationRequest, NoteFrontMatter, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
@@ -129,6 +134,9 @@ export default function App() {
   const [deleteTarget, setDeleteTarget] = useState<VaultFile | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [toolkitOpen, setToolkitOpen] = useState(false);
+  const [deckSession, setDeckSession] = useState<DeckSession | null>(null);
+  const [tableFiles, setTableFiles] = useState<TableFile[]>([]);
   const [status, setStatus] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [version, setVersion] = useState("");
@@ -145,6 +153,12 @@ export default function App() {
     return list;
   }, []);
 
+  const refreshTableFiles = useCallback(async (path: string) => {
+    const list = await listTableFiles(path);
+    setTableFiles(list);
+    return list;
+  }, []);
+
   useEffect(() => {
     (async () => {
       const savedSettings = await loadSetting<SybylSettings>("sybylSettings");
@@ -158,10 +172,11 @@ export default function App() {
       if (saved) {
         setVaultPath(saved);
         await refreshFiles(saved);
+        await refreshTableFiles(saved);
       }
     })();
     getVersion().then(setVersion).catch(() => {});
-  }, [refreshFiles]);
+  }, [refreshFiles, refreshTableFiles]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -184,6 +199,7 @@ export default function App() {
     setActiveFile(null);
     setBody("");
     await refreshFiles(picked);
+    await refreshTableFiles(picked);
   }
 
   function selectFile(file: VaultFile) {
@@ -843,6 +859,50 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     });
   }
 
+  function toolkitRollDice(expr: string): string | undefined {
+    const result = rollExpression(expr);
+    if (!result) {
+      flashStatus(`Sybyl: couldn't parse dice expression "${expr}".`);
+      return undefined;
+    }
+    return formatRollResult(result);
+  }
+
+  function toolkitDrawCard(): string | undefined {
+    const session = deckSession ?? createDeckSession("standard");
+    const { session: nextSession, card } = drawCard(session);
+    setDeckSession(nextSession);
+    return card;
+  }
+
+  function toolkitReshuffleDeck() {
+    if (!deckSession) return;
+    setDeckSession(reshuffleDeck(deckSession));
+  }
+
+  function toolkitSetDeckType(type: DeckType) {
+    setDeckSession(createDeckSession(type));
+  }
+
+  function toolkitGenerateWord(categoryId: string): string | undefined {
+    return generateWord(categoryId);
+  }
+
+  async function toolkitRollTable(path: string): Promise<string | undefined> {
+    try {
+      const content = await readTableFile(path);
+      return rollTable(parseTableEntries(content));
+    } catch (error) {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    }
+  }
+
+  function toolkitInsert(text: string) {
+    if (!activeFileRef.current) return;
+    insertFormatted(text, "cursor");
+  }
+
   const commands: CommandItem[] = [
     { id: "ask-oracle", label: "Ask Oracle", run: cmdAskOracle },
     { id: "start-scene", label: "Start Scene", run: cmdStartScene },
@@ -894,9 +954,25 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             <button disabled={!activeFile || loading} onClick={() => setPaletteOpen(true)}>
               Commands <span className="kbd-hint">Ctrl+K</span>
             </button>
+            <button disabled={!vaultPath} onClick={() => setToolkitOpen((v) => !v)}>Toolkit</button>
             <button onClick={() => setSettingsOpen(true)}>Settings</button>
           </div>
         </div>
+        {toolkitOpen && vaultPath && (
+          <ToolkitPanel
+            deckSession={deckSession}
+            tableFiles={tableFiles}
+            canInsert={!!activeFile}
+            onRollDice={toolkitRollDice}
+            onDrawCard={toolkitDrawCard}
+            onReshuffleDeck={toolkitReshuffleDeck}
+            onSetDeckType={toolkitSetDeckType}
+            onGenerateWord={toolkitGenerateWord}
+            onRollTable={toolkitRollTable}
+            onRefreshTables={() => vaultPath && refreshTableFiles(vaultPath)}
+            onInsert={toolkitInsert}
+          />
+        )}
         {status && (
           <div className="status-bar">
             <span>{status}</span>
