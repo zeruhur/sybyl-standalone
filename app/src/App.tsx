@@ -11,6 +11,7 @@ import FileSwitcher from "./components/FileSwitcher";
 import ListPickerModal, { ListPickerItem } from "./components/ListPickerModal";
 import SourceManagerModal from "./components/SourceManagerModal";
 import FormatToolbar from "./components/FormatToolbar";
+import CampaignInfoPanel from "./components/CampaignInfoPanel";
 import ConfirmModal from "./components/ConfirmModal";
 import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, listVaultFiles, loadSetting, pickVaultFolder, saveSetting, writeVaultFile } from "./lib/vault";
 import { keychainGet, keychainSet } from "./lib/keychain";
@@ -618,6 +619,14 @@ Keep it concise — 4 bullet points, one short sentence each.`;
     flashStatus("Scene context updated from log.");
   }
 
+  function cmdInsertCampaignHeader() {
+    const fm = activeFileRef.current?.fm;
+    if (!fm) return;
+    const title = fm.title?.trim() || "Untitled Campaign";
+    const block = `# ${title}\n\n## Session 1\n*Date: ${todayIsoDate()} | Duration: *\n\n### S1 *Starting scene*\n\n`;
+    insertFormatted(block, "cursor");
+  }
+
   function cmdNewSessionHeader() {
     openModal(
       "New Session Header",
@@ -844,6 +853,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     { id: "what-now", label: "What Now", run: cmdWhatNow },
     { id: "what-can-i-do", label: "What Can I Do", run: cmdWhatCanIDo },
     { id: "update-scene-context", label: "Update Scene Context", run: cmdUpdateSceneContext },
+    { id: "insert-campaign-header", label: "Insert Campaign Header", run: cmdInsertCampaignHeader },
     { id: "new-session-header", label: "New Session Header", run: cmdNewSessionHeader },
     { id: "edit-campaign-info", label: "Edit Campaign Info", run: cmdEditCampaignInfo },
     { id: "insert-quick-scene", label: "Insert Quick Scene", run: cmdInsertQuickScene },
@@ -897,6 +907,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         )}
         {activeFile ? (
           <>
+            <CampaignInfoPanel fm={activeFile.fm} />
             <FormatToolbar
               onBold={formatBold}
               onItalic={formatItalic}
