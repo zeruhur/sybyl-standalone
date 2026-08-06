@@ -3,6 +3,8 @@ import { DeckSession, DeckType } from "../lib/toolkit/cardEngine";
 import { WORD_CATEGORIES } from "../lib/toolkit/wordGenerators";
 import { TableFile } from "../lib/toolkit/tables";
 import { ORACLE_LIKELIHOODS } from "../lib/toolkit/oracleEngine";
+import { CustomDeckSession, DeckFolder } from "../lib/toolkit/customDeckEngine";
+import { CutUpMode } from "../lib/toolkit/cutup";
 
 const QUICK_DICE = ["d4", "d6", "d8", "d10", "d12", "d20", "d%"];
 
@@ -21,6 +23,14 @@ interface ToolkitPanelProps {
   chaosFactor: number;
   onSetChaosFactor: (n: number) => void;
   onAskOracle: (likelihoodId: string) => string | undefined;
+  deckFolders: DeckFolder[];
+  customDeckSession: CustomDeckSession | null;
+  onRefreshDeckFolders: () => void;
+  onSetCustomDeck: (folder: DeckFolder) => void;
+  onDrawCustomCard: () => Promise<{ path: string; dataUri: string } | undefined>;
+  onReshuffleCustomDeck: () => void;
+  onCutUp: (text: string, mode: CutUpMode) => string | undefined;
+  onLoadTableText: (path: string) => Promise<string | undefined>;
 }
 
 export default function ToolkitPanel({
@@ -37,7 +47,15 @@ export default function ToolkitPanel({
   onInsert,
   chaosFactor,
   onSetChaosFactor,
-  onAskOracle
+  onAskOracle,
+  deckFolders,
+  customDeckSession,
+  onRefreshDeckFolders,
+  onSetCustomDeck,
+  onDrawCustomCard,
+  onReshuffleCustomDeck,
+  onCutUp,
+  onLoadTableText
 }: ToolkitPanelProps) {
   const [diceExpr, setDiceExpr] = useState("2d6+2");
   const [diceResult, setDiceResult] = useState<string | undefined>(undefined);
@@ -48,6 +66,12 @@ export default function ToolkitPanel({
   const [tableResult, setTableResult] = useState<string | undefined>(undefined);
   const [oracleLikelihood, setOracleLikelihood] = useState("fifty_fifty");
   const [oracleResult, setOracleResult] = useState<string | undefined>(undefined);
+  const [customDeckPath, setCustomDeckPath] = useState("");
+  const [customCardDraw, setCustomCardDraw] = useState<{ path: string; dataUri: string } | undefined>(undefined);
+  const [cutupText, setCutupText] = useState("");
+  const [cutupMode, setCutupMode] = useState<CutUpMode>("words");
+  const [cutupSourceTable, setCutupSourceTable] = useState("");
+  const [cutupResult, setCutupResult] = useState<string | undefined>(undefined);
 
   function rollDice(expr: string) {
     const result = onRollDice(expr);
@@ -69,6 +93,27 @@ export default function ToolkitPanel({
 
   function askOracle() {
     setOracleResult(onAskOracle(oracleLikelihood));
+  }
+
+  function setCustomDeck(path: string) {
+    setCustomDeckPath(path);
+    setCustomCardDraw(undefined);
+    const folder = deckFolders.find((f) => f.path === path);
+    if (folder) onSetCustomDeck(folder);
+  }
+
+  async function drawCustomCard() {
+    setCustomCardDraw(await onDrawCustomCard());
+  }
+
+  function cutUp() {
+    setCutupResult(onCutUp(cutupText, cutupMode));
+  }
+
+  async function loadTableText() {
+    if (!cutupSourceTable) return;
+    const text = await onLoadTableText(cutupSourceTable);
+    if (text !== undefined) setCutupText(text);
   }
 
   return (
@@ -150,6 +195,40 @@ export default function ToolkitPanel({
       </div>
 
       <div className="toolkit-section">
+        <h4>Custom Deck</h4>
+        {deckFolders.length === 0 ? (
+          <div className="toolkit-empty">
+            No decks found. Add folders of images to <code>decks/&lt;name&gt;/</code> in your vault.
+            <button onClick={onRefreshDeckFolders}>Refresh</button>
+          </div>
+        ) : (
+          <>
+            <div className="toolkit-row">
+              <select value={customDeckPath} onChange={(e) => setCustomDeck(e.target.value)}>
+                <option value="">Choose a deck...</option>
+                {deckFolders.map((f) => (
+                  <option key={f.path} value={f.path}>{f.name}</option>
+                ))}
+              </select>
+              <button onClick={drawCustomCard} disabled={!customDeckSession}>Draw</button>
+              <button onClick={onReshuffleCustomDeck} disabled={!customDeckSession}>Reshuffle</button>
+              <button onClick={onRefreshDeckFolders}>Refresh</button>
+            </div>
+            {customDeckSession && (
+              <div className="toolkit-deck-counts">
+                Draw pile: {customDeckSession.drawPile.length} · Discard: {customDeckSession.discardPile.length}
+              </div>
+            )}
+            {customCardDraw && (
+              <div className="toolkit-result">
+                <img src={customCardDraw.dataUri} alt="Drawn card" style={{ maxWidth: "120px", maxHeight: "160px" }} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="toolkit-section">
         <h4>Words</h4>
         <div className="toolkit-row">
           <select value={wordCategory} onChange={(e) => setWordCategory(e.target.value)}>
@@ -163,6 +242,41 @@ export default function ToolkitPanel({
           <div className="toolkit-result">
             <span>{wordResult}</span>
             <button disabled={!canInsert} onClick={() => onInsert(wordResult)}>Insert</button>
+          </div>
+        )}
+      </div>
+
+      <div className="toolkit-section">
+        <h4>Cut-up</h4>
+        <textarea
+          value={cutupText}
+          onChange={(e) => setCutupText(e.target.value)}
+          placeholder="Paste or type a block of text to cut up..."
+          rows={3}
+          style={{ width: "100%" }}
+        />
+        {tableFiles.length > 0 && (
+          <div className="toolkit-row">
+            <select value={cutupSourceTable} onChange={(e) => setCutupSourceTable(e.target.value)}>
+              <option value="">Load from table...</option>
+              {tableFiles.map((t) => (
+                <option key={t.path} value={t.path}>{t.name}</option>
+              ))}
+            </select>
+            <button onClick={loadTableText} disabled={!cutupSourceTable}>Load</button>
+          </div>
+        )}
+        <div className="toolkit-row">
+          <select value={cutupMode} onChange={(e) => setCutupMode(e.target.value as CutUpMode)}>
+            <option value="words">Words</option>
+            <option value="lines">Lines</option>
+          </select>
+          <button onClick={cutUp} disabled={!cutupText.trim()}>Cut Up</button>
+        </div>
+        {cutupResult && (
+          <div className="toolkit-result">
+            <span style={{ whiteSpace: "pre-line" }}>{cutupResult}</span>
+            <button disabled={!canInsert} onClick={() => onInsert(cutupResult)}>Insert</button>
           </div>
         )}
       </div>

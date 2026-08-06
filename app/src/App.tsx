@@ -20,6 +20,16 @@ import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } fro
 import { generateWord } from "./lib/toolkit/wordGenerators";
 import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
 import { askOracle, formatOracleResult } from "./lib/toolkit/oracleEngine";
+import {
+  createCustomDeckSession,
+  CustomDeckSession,
+  DeckFolder,
+  drawCustomCard,
+  imageToDataUri,
+  listDeckFolders,
+  reshuffleCustomDeck
+} from "./lib/toolkit/customDeckEngine";
+import { cutUpText, CutUpMode } from "./lib/toolkit/cutup";
 import { keychainGet, keychainSet } from "./lib/keychain";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
 import { GenerationRequest, NoteFrontMatter, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
@@ -139,6 +149,8 @@ export default function App() {
   const [deckSession, setDeckSession] = useState<DeckSession | null>(null);
   const [tableFiles, setTableFiles] = useState<TableFile[]>([]);
   const [oracleChaosFactor, setOracleChaosFactor] = useState(5);
+  const [deckFolders, setDeckFolders] = useState<DeckFolder[]>([]);
+  const [customDeckSession, setCustomDeckSession] = useState<CustomDeckSession | null>(null);
   const [status, setStatus] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [version, setVersion] = useState("");
@@ -161,6 +173,12 @@ export default function App() {
     return list;
   }, []);
 
+  const refreshDeckFolders = useCallback(async (path: string) => {
+    const list = await listDeckFolders(path);
+    setDeckFolders(list);
+    return list;
+  }, []);
+
   useEffect(() => {
     (async () => {
       const savedSettings = await loadSetting<SybylSettings>("sybylSettings");
@@ -175,10 +193,11 @@ export default function App() {
         setVaultPath(saved);
         await refreshFiles(saved);
         await refreshTableFiles(saved);
+        await refreshDeckFolders(saved);
       }
     })();
     getVersion().then(setVersion).catch(() => {});
-  }, [refreshFiles, refreshTableFiles]);
+  }, [refreshFiles, refreshTableFiles, refreshDeckFolders]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -202,6 +221,7 @@ export default function App() {
     setBody("");
     await refreshFiles(picked);
     await refreshTableFiles(picked);
+    await refreshDeckFolders(picked);
   }
 
   function selectFile(file: VaultFile) {
@@ -914,6 +934,44 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     return formatOracleResult(result);
   }
 
+  function toolkitSetCustomDeck(folder: DeckFolder) {
+    (async () => {
+      const session = await createCustomDeckSession(folder);
+      if (!session) {
+        flashStatus(`Sybyl: no images found in deck "${folder.name}".`);
+        setCustomDeckSession(null);
+        return;
+      }
+      setCustomDeckSession(session);
+    })();
+  }
+
+  async function toolkitDrawCustomCard(): Promise<{ path: string; dataUri: string } | undefined> {
+    if (!customDeckSession) return undefined;
+    const { session, card } = drawCustomCard(customDeckSession);
+    setCustomDeckSession(session);
+    if (!card) return undefined;
+    return { path: card, dataUri: await imageToDataUri(card) };
+  }
+
+  function toolkitReshuffleCustomDeck() {
+    if (!customDeckSession) return;
+    setCustomDeckSession(reshuffleCustomDeck(customDeckSession));
+  }
+
+  function toolkitCutUp(text: string, mode: CutUpMode): string | undefined {
+    return cutUpText(text, mode);
+  }
+
+  async function toolkitLoadTableText(path: string): Promise<string | undefined> {
+    try {
+      return await readTableFile(path);
+    } catch (error) {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    }
+  }
+
   const commands: CommandItem[] = [
     { id: "ask-oracle", label: "Ask Oracle", run: cmdAskOracle },
     { id: "start-scene", label: "Start Scene", run: cmdStartScene },
@@ -985,6 +1043,14 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             chaosFactor={oracleChaosFactor}
             onSetChaosFactor={setOracleChaosFactor}
             onAskOracle={toolkitAskOracle}
+            deckFolders={deckFolders}
+            customDeckSession={customDeckSession}
+            onRefreshDeckFolders={() => vaultPath && refreshDeckFolders(vaultPath)}
+            onSetCustomDeck={toolkitSetCustomDeck}
+            onDrawCustomCard={toolkitDrawCustomCard}
+            onReshuffleCustomDeck={toolkitReshuffleCustomDeck}
+            onCutUp={toolkitCutUp}
+            onLoadTableText={toolkitLoadTableText}
           />
         )}
         {status && (

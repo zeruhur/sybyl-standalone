@@ -2,9 +2,9 @@
  * files in `<vault>/tables/`, one entry per line, with an optional trailing `^N` weight
  * (default 1). No table-authoring UI in this phase — users create files with their own
  * editor or Import Note. Deliberately scoped down from solo-toolkit's full table system:
- * no bell-curve distributions, no `{note/section}` cross-reference templates, no cut-up
- * mode (the latter is marked nice-to-have in features.md; the others have no Lonelog spec
- * basis to anchor a notation-compatible implementation).​ */
+ * no bell-curve distributions, no `{note/section}` cross-reference templates — neither has
+ * a Lonelog spec basis to anchor a notation-compatible implementation. Cut-up mode lives in
+ * cutup.ts; its "load from table" option reuses `readTableFile` from here. */
 
 import { exists, readDir, readTextFile } from "@tauri-apps/plugin-fs";
 import { joinPath } from "../vault";

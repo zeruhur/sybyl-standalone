@@ -1,8 +1,8 @@
 /** Card draw engine for the Lonelog Card Notation Add-on. Produces tokens in exactly
  * `cardNotation.ts`'s shorthand so a drawn result is already valid Lonelog card notation
  * (grammar source: lonelog-cards-addon.md). Standard 52-card deck (+jokers) and full Tarot
- * (Major + Minor Arcana). Custom image-based decks and cut-up mode are out of scope
- * (features.md marks both nice-to-have). */
+ * (Major + Minor Arcana). Custom image-based decks live in customDeckEngine.ts (they reuse
+ * this file's `shuffle()` but aren't text-token decks, so they don't share DeckSession). */
 
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const SUITS = ["h", "d", "c", "s"];

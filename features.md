@@ -6,6 +6,7 @@
   - Oracles
   - Custom Deck of Cards
   - Cut-up method mode
+- extend formatting toolbar to cover all the GFM notation + footnotes
 - Android and iOS support
 - multiplatform builds (and marketplace support?)
 - better UI
