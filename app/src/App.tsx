@@ -47,7 +47,7 @@ import {
   formatSuggestConsequence,
   LonelogFormatOptions
 } from "./lib/lonelog/formatter";
-import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, insertFootnote, isInsideCodeBlock, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
+import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, insertFootnote, InsertedRange, isInsideCodeBlock, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
 import "./App.css";
 
 const NEW_NOTE_FIELDS: PromptField[] = [
@@ -60,7 +60,15 @@ const NEW_NOTE_FIELDS: PromptField[] = [
   { key: "themes", label: "Themes", optional: true },
   { key: "tone", label: "Tone", optional: true },
   { key: "notes", label: "Notes", optional: true },
-  { key: "session_type", label: "Type (campaign / one_shot)", defaultValue: "campaign" },
+  {
+    key: "session_type",
+    label: "Type",
+    defaultValue: "campaign",
+    options: [
+      { value: "campaign", label: "Campaign" },
+      { value: "one_shot", label: "One-shot" }
+    ]
+  },
   { key: "game_context", label: "Game context", optional: true }
 ];
 
@@ -119,6 +127,16 @@ async function migrateAndLoadApiKey(account: string, legacyKey: string): Promise
 
 type Placement = "cursor" | "below-selection" | "end-of-note";
 
+interface LastGeneration {
+  filePath: string;
+  userMessage: string;
+  format: (text: string, insideCodeBlock: boolean) => string;
+  maxOutputTokens: number;
+  placement: Placement;
+  insertedText: string;
+  range: InsertedRange | null;
+}
+
 interface ActiveModal {
   title: string;
   fields: PromptField[];
@@ -154,6 +172,7 @@ export default function App() {
   const [customDeckSession, setCustomDeckSession] = useState<CustomDeckSession | null>(null);
   const [status, setStatus] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [lastGeneration, setLastGeneration] = useState<LastGeneration | null>(null);
   const [version, setVersion] = useState("");
 
   const editorViewRef = useRef<EditorView | null>(null);
@@ -232,6 +251,7 @@ export default function App() {
   function selectFile(file: VaultFile) {
     setActiveFile(file);
     setBody(file.body);
+    setLastGeneration(null);
   }
 
   const persistBody = useCallback((path: string, nextBody: string) => {
@@ -462,21 +482,40 @@ export default function App() {
     setFiles((prev) => prev.map((f) => (f.path === updated.path ? updated : f)));
   }
 
-  function insertFormatted(formatted: string, placement: Placement) {
+  function insertFormatted(formatted: string, placement: Placement): InsertedRange | null {
     const file = activeFileRef.current;
     const view = editorViewRef.current;
     if (view) {
-      if (placement === "below-selection") insertBelowSelection(view, formatted);
-      else if (placement === "end-of-note") appendToNote(view, formatted);
-      else insertAtCursor(view, formatted);
+      const range =
+        placement === "below-selection"
+          ? insertBelowSelection(view, formatted)
+          : placement === "end-of-note"
+          ? appendToNote(view, formatted)
+          : insertAtCursor(view, formatted);
       const nextBody = view.state.doc.toString();
       setBody(nextBody);
       if (file) persistBody(file.path, nextBody);
+      return range;
     } else if (file) {
       const nextBody = `${body}\n${formatted}\n`;
       setBody(nextBody);
       persistBody(file.path, nextBody);
     }
+    return null;
+  }
+
+  /** Replaces a previously-inserted range in place (used by regenerateLast). Returns the new
+   * range so a further regenerate can chain off of it. */
+  function replaceFormatted(formatted: string, range: InsertedRange): InsertedRange | null {
+    const file = activeFileRef.current;
+    const view = editorViewRef.current;
+    if (!view) return null;
+    view.dispatch({ changes: { from: range.from, to: range.to, insert: formatted } });
+    view.focus();
+    const nextBody = view.state.doc.toString();
+    setBody(nextBody);
+    if (file) persistBody(file.path, nextBody);
+    return { from: range.from, to: range.from + formatted.length };
   }
 
   function flashStatus(text: string, ms = 4000) {
@@ -484,16 +523,17 @@ export default function App() {
     window.setTimeout(() => setStatus(""), ms);
   }
 
-  /** Core pipeline shared by every LLM-backed command: frontmatter+body -> provider -> formatter -> insert. */
-  async function runGeneration(options: {
+  /** Core pipeline shared by every LLM-backed command: frontmatter+body -> provider -> formatter ->
+   * insert (or, for a regenerate, replace the previous output in place). */
+  async function executeGeneration(args: {
+    file: VaultFile;
     userMessage: string;
     format: (text: string, insideCodeBlock: boolean) => string;
-    maxOutputTokens?: number;
-    placement?: Placement;
+    maxOutputTokens: number;
+    placement: Placement;
+    replaceRange: InsertedRange | null;
   }) {
-    const file = activeFileRef.current;
-    if (!file) return;
-    const { userMessage, format, maxOutputTokens = settings.defaultMaxOutputTokens, placement = "cursor" } = options;
+    const { file, userMessage, format, maxOutputTokens, placement, replaceRange } = args;
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -508,7 +548,8 @@ export default function App() {
       const request = buildRequest(file.fm, userMessage, settings, maxOutputTokens, currentBody);
       const response = await provider.generate(request, controller.signal);
       const formatted = format(response.text, insideCodeBlock);
-      insertFormatted(formatted, placement);
+      const range = replaceRange ? replaceFormatted(formatted, replaceRange) : insertFormatted(formatted, placement);
+      setLastGeneration({ filePath: file.path, userMessage, format, maxOutputTokens, placement, insertedText: formatted, range });
       flashStatus("Sybyl: done.");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -520,6 +561,42 @@ export default function App() {
       setLoading(false);
       abortControllerRef.current = null;
     }
+  }
+
+  async function runGeneration(options: {
+    userMessage: string;
+    format: (text: string, insideCodeBlock: boolean) => string;
+    maxOutputTokens?: number;
+    placement?: Placement;
+  }) {
+    const file = activeFileRef.current;
+    if (!file) return;
+    const { userMessage, format, maxOutputTokens = settings.defaultMaxOutputTokens, placement = "cursor" } = options;
+    await executeGeneration({ file, userMessage, format, maxOutputTokens, placement, replaceRange: null });
+  }
+
+  /** Re-sends the last LLM-backed generation's exact request and swaps its output in place for a
+   * fresh one — for when the result wasn't what you wanted. Falls back to inserting fresh (rather
+   * than replacing) if the note has changed since, so it can never clobber unrelated edits: it
+   * only replaces in place when the text at the tracked range still matches exactly what was
+   * inserted last time. */
+  function regenerateLast() {
+    const file = activeFileRef.current;
+    const last = lastGeneration;
+    if (!file || !last || loading || last.filePath !== file.path) return;
+    const view = editorViewRef.current;
+    const replaceRange =
+      last.range && view && view.state.sliceDoc(last.range.from, last.range.to) === last.insertedText
+        ? last.range
+        : null;
+    void executeGeneration({
+      file,
+      userMessage: last.userMessage,
+      format: last.format,
+      maxOutputTokens: last.maxOutputTokens,
+      placement: last.placement,
+      replaceRange
+    });
   }
 
   function cancelGeneration() {
@@ -759,7 +836,16 @@ Keep it concise — 4 bullet points, one short sentence each.`;
       { key: "tools", label: "Tools", optional: true, defaultValue: fm.tools },
       { key: "themes", label: "Themes", optional: true, defaultValue: fm.themes },
       { key: "tone", label: "Tone", optional: true, defaultValue: fm.tone },
-      { key: "notes", label: "Notes", optional: true, defaultValue: fm.notes }
+      { key: "notes", label: "Notes", optional: true, defaultValue: fm.notes },
+      {
+        key: "session_type",
+        label: "Type",
+        defaultValue: fm.session_type ?? "campaign",
+        options: [
+          { value: "campaign", label: "Campaign" },
+          { value: "one_shot", label: "One-shot" }
+        ]
+      }
     ];
     openModal("Edit Campaign Info", fields, async (values) => {
       closeModal();
@@ -767,6 +853,7 @@ Keep it concise — 4 bullet points, one short sentence each.`;
       for (const key of CAMPAIGN_INFO_KEYS) {
         patch[key] = values[key]?.trim();
       }
+      patch.session_type = values.session_type === "one_shot" ? "one_shot" : "campaign";
       await updateActiveFrontmatter(patch);
       flashStatus("Campaign info updated.");
     });
@@ -875,7 +962,7 @@ Question: ${question}`;
           userMessage: prompt,
           maxOutputTokens: 1000,
           resolvedSources,
-          onResult: (text) => insertFormatted(`> [Rules] ${text.trim().replace(/\n/g, "\n> ")}`, "cursor")
+          onResult: (text) => { insertFormatted(`> [Rules] ${text.trim().replace(/\n/g, "\n> ")}`, "cursor"); }
         });
       });
     };
@@ -930,7 +1017,7 @@ ${formatInstruction}`;
             userMessage: prompt,
             maxOutputTokens: 1500,
             resolvedSources,
-            onResult: (text) => insertFormatted(text.trim(), "cursor")
+            onResult: (text) => { insertFormatted(text.trim(), "cursor"); }
           });
         }
       );
@@ -1129,8 +1216,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             >
               {settings.theme === "dark" ? "☀" : "☾"}
             </button>
-            <button disabled={!vaultPath} onClick={() => setSwitcherOpen(true)}>
-              Switch <span className="kbd-hint">Ctrl+O</span>
+            <button disabled={!vaultPath} onClick={() => setSwitcherOpen(true)} title="Search notes by name or content">
+              Search <span className="kbd-hint">Ctrl+O</span>
             </button>
             <button disabled={!activeFile || loading} onClick={() => setPaletteOpen(true)}>
               Commands <span className="kbd-hint">Ctrl+K</span>
@@ -1170,6 +1257,11 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             <span>{status}</span>
             {loading && (
               <button className="cancel-button" onClick={cancelGeneration}>Cancel</button>
+            )}
+            {!loading && lastGeneration && lastGeneration.filePath === activeFile?.path && (
+              <button className="regenerate-button" onClick={regenerateLast} title="Re-run the last generation and replace its output">
+                Regenerate
+              </button>
             )}
           </div>
         )}

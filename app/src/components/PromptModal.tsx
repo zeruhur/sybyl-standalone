@@ -6,6 +6,9 @@ export interface PromptField {
   placeholder?: string;
   optional?: boolean;
   defaultValue?: string;
+  /** Renders a <select> instead of a free-text <input> — for fields with a fixed set of valid
+   * values (e.g. session_type), where free text invites silent typos. */
+  options?: { value: string; label: string }[];
 }
 
 interface PromptModalProps {
@@ -40,23 +43,35 @@ export default function PromptModal({ title, fields, onSubmit, onCancel }: Promp
           {fields.map((field) => (
             <label className="modal-field" key={field.key}>
               <span>{field.label}{field.optional ? " (optional)" : ""}</span>
-              <input
-                autoFocus={field === fields[0]}
-                placeholder={field.placeholder}
-                value={values[field.key] ?? ""}
-                className={invalidKeys.has(field.key) ? "field-invalid" : undefined}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setValues((v) => ({ ...v, [field.key]: next }));
-                  if (invalidKeys.has(field.key) && next.trim()) {
-                    setInvalidKeys((prev) => {
-                      const next = new Set(prev);
-                      next.delete(field.key);
-                      return next;
-                    });
-                  }
-                }}
-              />
+              {field.options ? (
+                <select
+                  autoFocus={field === fields[0]}
+                  value={values[field.key] ?? field.options[0]?.value ?? ""}
+                  onChange={(e) => setValues((v) => ({ ...v, [field.key]: e.target.value }))}
+                >
+                  {field.options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  autoFocus={field === fields[0]}
+                  placeholder={field.placeholder}
+                  value={values[field.key] ?? ""}
+                  className={invalidKeys.has(field.key) ? "field-invalid" : undefined}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setValues((v) => ({ ...v, [field.key]: next }));
+                    if (invalidKeys.has(field.key) && next.trim()) {
+                      setInvalidKeys((prev) => {
+                        const next = new Set(prev);
+                        next.delete(field.key);
+                        return next;
+                      });
+                    }
+                  }}
+                />
+              )}
               {invalidKeys.has(field.key) && <span className="field-error">Required</span>}
             </label>
           ))}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { ProviderID, SybylSettings } from "../lib/types";
 import { getProvider } from "../lib/providers";
 
@@ -16,6 +17,22 @@ const PROVIDER_LABELS: Record<ProviderID, string> = {
   ollama: "Ollama (local)"
 };
 
+const PROVIDER_KEY_LINKS: Record<ProviderID, { label: string; url: string }> = {
+  anthropic: { label: "Get API key ↗", url: "https://console.anthropic.com/settings/keys" },
+  openai: { label: "Get API key ↗", url: "https://platform.openai.com/api-keys" },
+  gemini: { label: "Get API key ↗", url: "https://aistudio.google.com/apikey" },
+  ollama: { label: "Ollama website ↗", url: "https://ollama.com" }
+};
+
+function ProviderLink({ providerId }: { providerId: ProviderID }) {
+  const link = PROVIDER_KEY_LINKS[providerId];
+  return (
+    <button type="button" className="link-button provider-link" onClick={() => void openUrl(link.url)}>
+      {link.label}
+    </button>
+  );
+}
+
 interface ModelFieldProps {
   providerId: ProviderID;
   value: string;
@@ -28,34 +45,26 @@ interface ModelFieldProps {
 
 // A plain <input list>/<datalist> combo is the more "standard" HTML pattern, but WebView2
 // (what Tauri actually embeds on Windows) renders its dropdown affordance far less visibly than
-// desktop Chrome does — confirmed by testing the same markup in both. Once models are fetched,
-// show them in a real <select> instead: unambiguous, and reliably rendered as an actual dropdown
-// across every webview. The text input stays underneath for typing a model ID that isn't listed
-// (or before the first refresh, when there's nothing to pick from yet).
+// desktop Chrome does — confirmed by testing the same markup in both. A real <select> is
+// unambiguous and reliably rendered as an actual dropdown across every webview, so it's the only
+// control here — the current value is kept selectable even before a refresh (or if it's since
+// fallen out of the provider's returned list) by injecting it into the option set.
 function ModelField({ value, models, loading, error, onChange, onRefresh }: ModelFieldProps) {
+  const options = value && !models.includes(value) ? [value, ...models] : models;
   return (
     <label className="modal-field">
       <span>Model</span>
       <div className="model-field-row">
-        <input value={value} onChange={(e) => onChange(e.currentTarget.value)} placeholder="Model ID" />
+        <select value={value} onChange={(e) => onChange(e.currentTarget.value)}>
+          {options.length === 0 && <option value="">No model set — refresh to list options</option>}
+          {options.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
         <button type="button" onClick={onRefresh} disabled={loading} title="Fetch available models from the provider">
           {loading ? "..." : "Refresh"}
         </button>
       </div>
-      {models.length > 0 && (
-        <select
-          className="model-field-select"
-          value={models.includes(value) ? value : ""}
-          onChange={(e) => {
-            if (e.currentTarget.value) onChange(e.currentTarget.value);
-          }}
-        >
-          <option value="">— {models.length} model{models.length === 1 ? "" : "s"} available, pick one —</option>
-          {models.map((m) => (
-            <option key={m} value={m}>{m}</option>
-          ))}
-        </select>
-      )}
       {error && <p className="model-field-error">{error}</p>}
     </label>
   );
@@ -138,7 +147,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
         </label>
 
         <fieldset>
-          <legend>Claude</legend>
+          <legend>Claude <ProviderLink providerId="anthropic" /></legend>
           <label className="modal-field">
             <span>API key</span>
             <input
@@ -164,7 +173,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
         </fieldset>
 
         <fieldset>
-          <legend>OpenAI</legend>
+          <legend>OpenAI <ProviderLink providerId="openai" /></legend>
           <label className="modal-field">
             <span>API key</span>
             <input
@@ -190,7 +199,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
         </fieldset>
 
         <fieldset>
-          <legend>Gemini</legend>
+          <legend>Gemini <ProviderLink providerId="gemini" /></legend>
           <label className="modal-field">
             <span>API key</span>
             <input
@@ -216,7 +225,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
         </fieldset>
 
         <fieldset>
-          <legend>Ollama</legend>
+          <legend>Ollama <ProviderLink providerId="ollama" /></legend>
           <label className="modal-field">
             <span>Base URL</span>
             <input

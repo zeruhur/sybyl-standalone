@@ -7,6 +7,7 @@ interface CampaignInfoPanelProps {
 
 const CAMPAIGN_INFO_FIELDS: { key: keyof NoteFrontMatter; label: string; wide?: boolean }[] = [
   { key: "title", label: "Title" },
+  { key: "session_type", label: "Type" },
   { key: "player", label: "Player" },
   { key: "ruleset", label: "Ruleset" },
   { key: "genre", label: "Genre" },
@@ -19,6 +20,11 @@ const CAMPAIGN_INFO_FIELDS: { key: keyof NoteFrontMatter; label: string; wide?: 
   { key: "notes", label: "Notes" },
   { key: "game_context", label: "Game context", wide: true }
 ];
+
+function displayValue(fm: NoteFrontMatter, key: keyof NoteFrontMatter): string {
+  if (key === "session_type") return fm.session_type === "one_shot" ? "One-shot" : "Campaign";
+  return fm[key] ? String(fm[key]) : "—";
+}
 
 export default function CampaignInfoPanel({ fm }: CampaignInfoPanelProps) {
   const [open, setOpen] = useState(false);
@@ -34,7 +40,7 @@ export default function CampaignInfoPanel({ fm }: CampaignInfoPanelProps) {
             <div className={`campaign-info-row${wide ? " campaign-info-row-wide" : ""}`} key={key}>
               <span className="campaign-info-label">{label}</span>
               <span className="campaign-info-value" title={fm[key] ? String(fm[key]) : undefined}>
-                {fm[key] ? String(fm[key]) : "—"}
+                {displayValue(fm, key)}
               </span>
             </div>
           ))}

@@ -1,6 +1,11 @@
 import { EditorView } from "@codemirror/view";
 
-export function insertAtCursor(view: EditorView, text: string): void {
+export interface InsertedRange {
+  from: number;
+  to: number;
+}
+
+export function insertAtCursor(view: EditorView, text: string): InsertedRange {
   const pos = view.state.selection.main.head;
   const insert = `\n${text}\n`;
   view.dispatch({
@@ -8,9 +13,10 @@ export function insertAtCursor(view: EditorView, text: string): void {
     selection: { anchor: pos + insert.length }
   });
   view.focus();
+  return { from: pos + 1, to: pos + 1 + text.length };
 }
 
-export function appendToNote(view: EditorView, text: string): void {
+export function appendToNote(view: EditorView, text: string): InsertedRange {
   const pos = view.state.doc.length;
   const insert = `\n${text}\n`;
   view.dispatch({
@@ -18,13 +24,14 @@ export function appendToNote(view: EditorView, text: string): void {
     selection: { anchor: pos + insert.length }
   });
   view.focus();
+  return { from: pos + 1, to: pos + 1 + text.length };
 }
 
 export function getSelection(view: EditorView): string {
   return view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to).trim();
 }
 
-export function insertBelowSelection(view: EditorView, text: string): void {
+export function insertBelowSelection(view: EditorView, text: string): InsertedRange {
   const head = view.state.selection.main.head;
   const line = view.state.doc.lineAt(head);
   const insert = `\n${text}`;
@@ -33,6 +40,7 @@ export function insertBelowSelection(view: EditorView, text: string): void {
     selection: { anchor: line.to + insert.length }
   });
   view.focus();
+  return { from: line.to + 1, to: line.to + 1 + text.length };
 }
 
 /** Wraps the current selection with `before`/`after` markers (bold, italic, code, links, ...).

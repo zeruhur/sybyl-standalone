@@ -20,6 +20,8 @@ storyteller.
   Yes/No oracle with Chaos Factor, random tables, word generators, and a cut-up text tool
 - Provider API keys stored in the OS keychain, never in plaintext settings
 - Light and dark themes
+- Full-text search across the vault (Ctrl+O) — searches note bodies, not just filenames
+- One-click Regenerate for the last AI generation, replacing its output in place
 
 ## Commands
 

@@ -117,6 +117,12 @@ html, body, #root {
   border-color: transparent;
 }
 
+.provider-link {
+  font-weight: 400;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 .sidebar-note-actions {
   display: flex;
   gap: 6px;
@@ -225,6 +231,11 @@ html, body, #root {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.file-row-excerpt mark {
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* Main pane */
@@ -508,6 +519,17 @@ html, body, #root {
   color: #fff;
 }
 
+.regenerate-button {
+  padding: 2px 10px;
+  font-size: 11px;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.regenerate-button:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 .confirm-message {
   font-size: 13px;
   color: var(--text-dim);
@@ -745,14 +767,11 @@ input:focus, select:focus {
   display: flex;
   gap: 6px;
 }
-.model-field-row input {
+.model-field-row select {
   flex: 1;
 }
 .model-field-row button {
   flex-shrink: 0;
-}
-.model-field-select {
-  margin-top: 6px;
 }
 .model-field-error {
   margin: 6px 0 0;
