@@ -11,6 +11,9 @@ It enforces a strict neutral, third-person, non-directive AI persona: it never n
 player character, never uses second person, never invents lore. It is a referee tool, not a
 storyteller.
 
+**New to Sybyl?** See the [User Guide](docs/USER_GUIDE.md) for a full walkthrough of the app —
+notes, commands, the Toolkit, version history, and more.
+
 ## Features
 
 - A vault of plain Markdown notes with Lonelog frontmatter and syntax highlighting (scene
@@ -43,8 +46,9 @@ storyteller.
 - **Digest Source into Game Context** — distils source documents into a compact `game_context`
   stored in frontmatter
 
-Import Note, Export Note, and the Toolkit panel live outside the command palette (Ctrl+K) since
-they aren't tied to a single active note.
+Import Note, Export Note, Save Snapshot, and Version History live in the sidebar, and the
+Toolkit/Dashboard panels live behind their own command-bar buttons — none of them are in the
+command palette (Ctrl+K), since none of them are about generating text at the cursor.
 
 ## Supported Providers
 
@@ -78,6 +82,9 @@ npm run tauri dev
 - `npm run build` — type-check + build the frontend
 - `npm run tauri build` — full desktop build (needs Rust + a platform toolchain)
 - `cd src-tauri && cargo check` — fast Rust-only check
+
+For platform prerequisites and building Android/iOS packages locally, see
+[`docs/BUILDING.md`](docs/BUILDING.md).
 
 ## Releases
 

@@ -28,5 +28,10 @@ export default defineConfig(async () => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+    fs: {
+      // Allows the dev server to serve docs/USER_GUIDE.md (imported via `?raw` outside `app/`,
+      // Vite's default project root) — see src/lib/userGuide.ts.
+      allow: [".."],
+    },
   },
 }));

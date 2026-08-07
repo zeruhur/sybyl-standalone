@@ -16,6 +16,7 @@ import ConfirmModal from "./components/ConfirmModal";
 import ToolkitPanel from "./components/ToolkitPanel";
 import DashboardPanel from "./components/DashboardPanel";
 import VersionHistoryModal from "./components/VersionHistoryModal";
+import UserGuideModal from "./components/UserGuideModal";
 import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
 import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
@@ -171,6 +172,7 @@ export default function App() {
   const [toolkitOpen, setToolkitOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [userGuideOpen, setUserGuideOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [deckSession, setDeckSession] = useState<DeckSession | null>(null);
   const [tableFiles, setTableFiles] = useState<TableFile[]>([]);
@@ -1302,6 +1304,9 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
               Dashboard
             </button>
             <button onClick={() => { setSettingsOpen(true); setCommandMenuOpen(false); }}>Settings</button>
+            <button onClick={() => { setUserGuideOpen(true); setCommandMenuOpen(false); }} title="Open the User Guide">
+              Help
+            </button>
           </div>
         </div>
         {toolkitOpen && vaultPath && (
@@ -1423,6 +1428,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
           onClose={() => setHistoryOpen(false)}
         />
       )}
+      {userGuideOpen && <UserGuideModal onClose={() => setUserGuideOpen(false)} />}
       {deleteTarget && (
         <ConfirmModal
           title="Delete Note"
