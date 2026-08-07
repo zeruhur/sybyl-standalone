@@ -14,7 +14,10 @@ import FormatToolbar from "./components/FormatToolbar";
 import CampaignInfoPanel from "./components/CampaignInfoPanel";
 import ConfirmModal from "./components/ConfirmModal";
 import ToolkitPanel from "./components/ToolkitPanel";
-import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, pickVaultFolder, saveSetting, writeVaultFile } from "./lib/vault";
+import DashboardPanel from "./components/DashboardPanel";
+import VersionHistoryModal from "./components/VersionHistoryModal";
+import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
+import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
 import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
 import { generateWord } from "./lib/toolkit/wordGenerators";
@@ -156,6 +159,7 @@ export default function App() {
   const [body, setBody] = useState("");
   const [settings, setSettings] = useState<SybylSettings>(DEFAULT_SETTINGS);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<ActiveModal | null>(null);
@@ -165,6 +169,9 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [toolkitOpen, setToolkitOpen] = useState(false);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [deckSession, setDeckSession] = useState<DeckSession | null>(null);
   const [tableFiles, setTableFiles] = useState<TableFile[]>([]);
   const [oracleChaosFactor, setOracleChaosFactor] = useState(5);
@@ -252,6 +259,9 @@ export default function App() {
     setActiveFile(file);
     setBody(file.body);
     setLastGeneration(null);
+    if (vaultPath) {
+      void maybeAutoSnapshot(vaultPath, file);
+    }
   }
 
   const persistBody = useCallback((path: string, nextBody: string) => {
@@ -328,6 +338,7 @@ export default function App() {
     if (!target || !vaultPath) return;
     try {
       await deleteVaultFile(target.path);
+      await deleteSnapshots(vaultPath, target.name).catch(() => {});
       if (activeFileRef.current?.path === target.path) {
         setActiveFile(null);
         activeFileRef.current = null;
@@ -1069,6 +1080,45 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     });
   }
 
+  async function cmdSaveSnapshot() {
+    const file = activeFileRef.current;
+    if (!vaultPath || !file) return;
+    const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+    await saveSnapshot(vaultPath, { ...file, body: currentBody });
+    flashStatus("Snapshot saved.");
+  }
+
+  async function cmdVersionHistory() {
+    const file = activeFileRef.current;
+    if (!vaultPath || !file) return;
+    const list = await listSnapshots(vaultPath, file.name);
+    setSnapshots(list);
+    setHistoryOpen(true);
+  }
+
+  /** Restores a snapshot's content into the active note. The note's own current state is saved
+   * as a fresh snapshot first, so a restore is itself reversible from the same history list. */
+  async function restoreSnapshot(snapshot: Snapshot) {
+    const file = activeFileRef.current;
+    if (!vaultPath || !file) return;
+    setHistoryOpen(false);
+    try {
+      const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+      await saveSnapshot(vaultPath, { ...file, body: currentBody });
+      const restored = await readVaultFile(snapshot.path);
+      const nextFm: NoteFrontMatter = { ...file.fm, ...restored.fm };
+      await writeVaultFile(file.path, nextFm, restored.body);
+      const updated: VaultFile = { ...file, fm: nextFm, body: restored.body };
+      setActiveFile(updated);
+      activeFileRef.current = updated;
+      setBody(restored.body);
+      setFiles((prev) => prev.map((f) => (f.path === updated.path ? updated : f)));
+      flashStatus("Restored previous version.");
+    } catch (error) {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   function toolkitRollDice(expr: string): string | undefined {
     const result = rollExpression(expr);
     if (!result) {
@@ -1196,6 +1246,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         onNewNote={() => setNewNoteOpen(true)}
         onImportNote={runImportNote}
         onExportNote={cmdExportNote}
+        onSaveSnapshot={cmdSaveSnapshot}
+        onVersionHistory={cmdVersionHistory}
         onDeleteNote={setDeleteTarget}
         vaultPath={vaultPath}
         version={version}
@@ -1208,22 +1260,48 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             ☰
           </button>
           <span className="active-file-name">{activeFile ? activeFile.name : "No file open"}</span>
-          <div className="command-bar-actions">
+          <button
+            className="command-menu-toggle"
+            onClick={() => setCommandMenuOpen((v) => !v)}
+            title="More actions"
+          >
+            ⋯
+          </button>
+          <div className={`command-bar-actions${commandMenuOpen ? " command-bar-actions-open" : ""}`}>
             <button
               className="theme-toggle"
-              onClick={toggleTheme}
+              onClick={() => { toggleTheme(); setCommandMenuOpen(false); }}
               title={settings.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
             >
               {settings.theme === "dark" ? "☀" : "☾"}
             </button>
-            <button disabled={!vaultPath} onClick={() => setSwitcherOpen(true)} title="Search notes by name or content">
+            <button
+              disabled={!vaultPath}
+              onClick={() => { setSwitcherOpen(true); setCommandMenuOpen(false); }}
+              title="Search notes by name or content"
+            >
               Search <span className="kbd-hint">Ctrl+O</span>
             </button>
-            <button disabled={!activeFile || loading} onClick={() => setPaletteOpen(true)}>
+            <button
+              disabled={!activeFile || loading}
+              onClick={() => { setPaletteOpen(true); setCommandMenuOpen(false); }}
+            >
               Commands <span className="kbd-hint">Ctrl+K</span>
             </button>
-            <button disabled={!vaultPath} onClick={() => setToolkitOpen((v) => !v)}>Toolkit</button>
-            <button onClick={() => setSettingsOpen(true)}>Settings</button>
+            <button
+              disabled={!vaultPath}
+              onClick={() => { setToolkitOpen((v) => !v); setCommandMenuOpen(false); }}
+            >
+              Toolkit
+            </button>
+            <button
+              disabled={!activeFile}
+              onClick={() => { setDashboardOpen((v) => !v); setCommandMenuOpen(false); }}
+              title="Open threads, clocks, and tracks for this campaign"
+            >
+              Dashboard
+            </button>
+            <button onClick={() => { setSettingsOpen(true); setCommandMenuOpen(false); }}>Settings</button>
           </div>
         </div>
         {toolkitOpen && vaultPath && (
@@ -1252,6 +1330,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             onLoadTableText={toolkitLoadTableText}
           />
         )}
+        {dashboardOpen && activeFile && <DashboardPanel body={body} />}
         {status && (
           <div className="status-bar">
             <span>{status}</span>
@@ -1334,6 +1413,14 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
           sources={activeFile?.fm.sources ?? []}
           onRemove={removeSource}
           onClose={() => setSourceManagerOpen(false)}
+        />
+      )}
+      {historyOpen && activeFile && (
+        <VersionHistoryModal
+          noteName={activeFile.name}
+          snapshots={snapshots}
+          onRestore={restoreSnapshot}
+          onClose={() => setHistoryOpen(false)}
         />
       )}
       {deleteTarget && (

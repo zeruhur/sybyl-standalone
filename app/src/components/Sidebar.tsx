@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { isAndroid } from "../lib/vault";
 import { VaultFile } from "../lib/types";
 
@@ -9,6 +10,8 @@ interface SidebarProps {
   onNewNote: () => void;
   onImportNote: () => void;
   onExportNote: () => void;
+  onSaveSnapshot: () => void;
+  onVersionHistory: () => void;
   onDeleteNote: (file: VaultFile) => void;
   vaultPath: string | null;
   version: string;
@@ -48,6 +51,30 @@ function FileRow({
   );
 }
 
+function AccordionSection({
+  title,
+  count,
+  emptyMessage,
+  children
+}: {
+  title: string;
+  count: number;
+  emptyMessage: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="sidebar-section">
+      <button className="sidebar-section-toggle" onClick={() => setOpen((v) => !v)}>
+        <span>{open ? "▾" : "▸"}</span>
+        <span>{title}</span>
+        <span className="sidebar-section-count">{count}</span>
+      </button>
+      {open && (count === 0 ? <p className="empty-note">{emptyMessage}</p> : children)}
+    </div>
+  );
+}
+
 export default function Sidebar({
   files,
   activePath,
@@ -56,6 +83,8 @@ export default function Sidebar({
   onNewNote,
   onImportNote,
   onExportNote,
+  onSaveSnapshot,
+  onVersionHistory,
   onDeleteNote,
   vaultPath,
   version,
@@ -79,10 +108,12 @@ export default function Sidebar({
         <button className="import-note-button" disabled={!vaultPath} onClick={onImportNote} title="Import Note">Import</button>
         <button className="export-note-button" disabled={!activePath} onClick={onExportNote} title="Export Note">Export</button>
       </div>
+      <div className="sidebar-note-actions">
+        <button disabled={!activePath} onClick={onSaveSnapshot} title="Save a snapshot of this note's current state">Snapshot</button>
+        <button disabled={!activePath} onClick={onVersionHistory} title="View and restore previous snapshots of this note">History</button>
+      </div>
 
-      <div className="sidebar-section">
-        <h3>Campagne in corso</h3>
-        {campaigns.length === 0 && <p className="empty-note">No campaigns yet.</p>}
+      <AccordionSection title="Campagne in corso" count={campaigns.length} emptyMessage="No campaigns yet.">
         {campaigns.map((f) => (
           <FileRow
             key={f.path}
@@ -92,11 +123,9 @@ export default function Sidebar({
             onDelete={() => onDeleteNote(f)}
           />
         ))}
-      </div>
+      </AccordionSection>
 
-      <div className="sidebar-section">
-        <h3>One-shot</h3>
-        {oneShots.length === 0 && <p className="empty-note">No one-shots yet.</p>}
+      <AccordionSection title="One-shot" count={oneShots.length} emptyMessage="No one-shots yet.">
         {oneShots.map((f) => (
           <FileRow
             key={f.path}
@@ -106,7 +135,7 @@ export default function Sidebar({
             onDelete={() => onDeleteNote(f)}
           />
         ))}
-      </div>
+      </AccordionSection>
 
       <div className="sidebar-footer">Sybyl{version ? ` v${version}` : ""}</div>
       </aside>

@@ -145,16 +145,41 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+.sidebar-note-actions + .sidebar-note-actions button {
+  flex: 1;
+}
+
 .sidebar-section {
   margin-bottom: 20px;
 }
 
-.sidebar-section h3 {
+.sidebar-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 8px 4px;
+  background: none;
+  border: none;
+  border-radius: 0;
   font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
-  margin: 0 0 8px 4px;
+  cursor: pointer;
+  text-align: left;
+}
+.sidebar-section-toggle:hover {
+  color: var(--text);
+}
+
+.sidebar-section-count {
+  margin-left: auto;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .empty-note {
@@ -259,6 +284,10 @@ html, body, #root {
   display: none;
   font-size: 16px;
   padding: 4px 8px;
+}
+
+.command-menu-toggle {
+  display: none;
 }
 
 .sidebar-close {
@@ -419,6 +448,95 @@ html, body, #root {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.dashboard-panel {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 14px 20px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dashboard-section h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.dashboard-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.dashboard-thread-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard-thread-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-thread-state {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.dashboard-thread-open {
+  color: var(--accent);
+}
+
+.dashboard-thread-closed {
+  color: var(--text-dim);
+}
+
+.dashboard-closed-threads {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.dashboard-closed-threads summary {
+  cursor: pointer;
+}
+
+.dashboard-progress-row {
+  margin-bottom: 10px;
+}
+
+.dashboard-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.dashboard-progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.dashboard-progress-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+@media (max-width: 720px) {
+  .dashboard-panel {
+    grid-template-columns: 1fr;
+  }
 }
 
 .format-toolbar {
@@ -858,15 +976,34 @@ input:focus, select:focus {
     white-space: nowrap;
   }
 
-  .command-bar-actions {
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-left: 0;
+  .command-menu-toggle {
+    display: inline-flex;
+    font-size: 16px;
+    padding: 4px 10px;
+    margin-left: auto;
   }
 
-  .command-bar-actions button {
-    padding: 6px 10px;
-    font-size: 12px;
+  /* The full action row no longer fits inline on narrow viewports (it used to just wrap onto an
+     ugly second row). It now collapses behind .command-menu-toggle and, when open, renders as a
+     2-column button board on its own full-width row instead. */
+  .command-bar-actions {
+    display: none;
+  }
+
+  .command-bar-actions.command-bar-actions-open {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-left: 0;
+    order: 4;
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .command-bar-actions.command-bar-actions-open button {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
   }
 
   .kbd-hint {
