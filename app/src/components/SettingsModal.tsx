@@ -21,26 +21,42 @@ interface ModelFieldProps {
   value: string;
   models: string[];
   loading: boolean;
+  error: string | null;
   onChange: (value: string) => void;
   onRefresh: () => void;
 }
 
-function ModelField({ providerId, value, models, loading, onChange, onRefresh }: ModelFieldProps) {
-  const listId = `models-${providerId}`;
+// A plain <input list>/<datalist> combo is the more "standard" HTML pattern, but WebView2
+// (what Tauri actually embeds on Windows) renders its dropdown affordance far less visibly than
+// desktop Chrome does — confirmed by testing the same markup in both. Once models are fetched,
+// show them in a real <select> instead: unambiguous, and reliably rendered as an actual dropdown
+// across every webview. The text input stays underneath for typing a model ID that isn't listed
+// (or before the first refresh, when there's nothing to pick from yet).
+function ModelField({ value, models, loading, error, onChange, onRefresh }: ModelFieldProps) {
   return (
     <label className="modal-field">
       <span>Model</span>
       <div className="model-field-row">
-        <input list={listId} value={value} onChange={(e) => onChange(e.currentTarget.value)} />
+        <input value={value} onChange={(e) => onChange(e.currentTarget.value)} placeholder="Model ID" />
         <button type="button" onClick={onRefresh} disabled={loading} title="Fetch available models from the provider">
           {loading ? "..." : "Refresh"}
         </button>
       </div>
-      <datalist id={listId}>
-        {models.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
+      {models.length > 0 && (
+        <select
+          className="model-field-select"
+          value={models.includes(value) ? value : ""}
+          onChange={(e) => {
+            if (e.currentTarget.value) onChange(e.currentTarget.value);
+          }}
+        >
+          <option value="">— {models.length} model{models.length === 1 ? "" : "s"} available, pick one —</option>
+          {models.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+      )}
+      {error && <p className="model-field-error">{error}</p>}
     </label>
   );
 }
@@ -50,6 +66,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
   const [version, setVersion] = useState("");
   const [modelOptions, setModelOptions] = useState<Partial<Record<ProviderID, string[]>>>({});
   const [loadingModels, setLoadingModels] = useState<Partial<Record<ProviderID, boolean>>>({});
+  const [modelErrors, setModelErrors] = useState<Partial<Record<ProviderID, string>>>({});
 
   useEffect(() => {
     getVersion().then(setVersion).catch(() => {});
@@ -62,13 +79,22 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
 
   async function refreshModels(providerId: ProviderID) {
     setLoadingModels((prev) => ({ ...prev, [providerId]: true }));
+    setModelErrors((prev) => ({ ...prev, [providerId]: undefined }));
     try {
       const models = await getProvider(draft, providerId).listModels();
       if (models.length > 0) {
         setModelOptions((prev) => ({ ...prev, [providerId]: models }));
+      } else {
+        setModelErrors((prev) => ({
+          ...prev,
+          [providerId]: "No models returned — check the API key and network connection."
+        }));
       }
-    } catch {
-      // Silent fallback — the Model field stays free-text, matching the original plugin's behavior.
+    } catch (error) {
+      setModelErrors((prev) => ({
+        ...prev,
+        [providerId]: error instanceof Error ? error.message : "Failed to fetch models."
+      }));
     } finally {
       setLoadingModels((prev) => ({ ...prev, [providerId]: false }));
     }
@@ -131,6 +157,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
             value={draft.providers.anthropic.defaultModel}
             models={modelOptions.anthropic ?? []}
             loading={loadingModels.anthropic ?? false}
+            error={modelErrors.anthropic ?? null}
             onChange={(v) => setModel("anthropic", v)}
             onRefresh={() => refreshModels("anthropic")}
           />
@@ -156,6 +183,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
             value={draft.providers.openai.defaultModel}
             models={modelOptions.openai ?? []}
             loading={loadingModels.openai ?? false}
+            error={modelErrors.openai ?? null}
             onChange={(v) => setModel("openai", v)}
             onRefresh={() => refreshModels("openai")}
           />
@@ -181,6 +209,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
             value={draft.providers.gemini.defaultModel}
             models={modelOptions.gemini ?? []}
             loading={loadingModels.gemini ?? false}
+            error={modelErrors.gemini ?? null}
             onChange={(v) => setModel("gemini", v)}
             onRefresh={() => refreshModels("gemini")}
           />
@@ -205,6 +234,7 @@ export default function SettingsModal({ settings, onSave, onClose }: SettingsMod
             value={draft.providers.ollama.defaultModel}
             models={modelOptions.ollama ?? []}
             loading={loadingModels.ollama ?? false}
+            error={modelErrors.ollama ?? null}
             onChange={(v) => setModel("ollama", v)}
             onRefresh={() => refreshModels("ollama")}
           />

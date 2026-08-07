@@ -67,7 +67,6 @@ export interface NoteFrontMatter {
   temperature?: number;
   sources?: SourceRef[];
   game_context?: string;
-  scene_context?: string;
   oracle_mode?: OracleMode;
   language?: string;
   scene_counter?: number;

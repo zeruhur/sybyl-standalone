@@ -62,6 +62,20 @@ export function togglePrefixLine(view: EditorView, prefix: string): void {
   view.focus();
 }
 
+/** Sets the line containing the cursor to the given GFM heading level (1-6). Replaces any
+ * existing heading prefix of a different level; clicking the line's current level again removes
+ * it entirely (toggle off), matching togglePrefixLine's behavior for the other prefix buttons. */
+export function setHeadingLevel(view: EditorView, level: number): void {
+  const pos = view.state.selection.main.head;
+  const line = view.state.doc.lineAt(pos);
+  const match = line.text.match(/^#{1,6}(?=\s|$)\s*/);
+  const isSameLevel = match ? match[0].trimEnd().length === level : false;
+  const insert = isSameLevel ? "" : `${"#".repeat(level)} `;
+  const to = match ? line.from + match[0].length : line.from;
+  view.dispatch({ changes: { from: line.from, to, insert } });
+  view.focus();
+}
+
 /** Inserts an auto-numbered footnote reference at the cursor (`[^n]`) and appends a matching
  * definition stub (`[^n]: `) at the end of the document, with the cursor left there ready to
  * type the note. `n` is one past the highest existing `[^N]` reference in the document. */

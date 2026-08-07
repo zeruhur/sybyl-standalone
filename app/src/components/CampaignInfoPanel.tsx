@@ -5,7 +5,7 @@ interface CampaignInfoPanelProps {
   fm: NoteFrontMatter;
 }
 
-const CAMPAIGN_INFO_FIELDS: { key: keyof NoteFrontMatter; label: string }[] = [
+const CAMPAIGN_INFO_FIELDS: { key: keyof NoteFrontMatter; label: string; wide?: boolean }[] = [
   { key: "title", label: "Title" },
   { key: "player", label: "Player" },
   { key: "ruleset", label: "Ruleset" },
@@ -16,7 +16,8 @@ const CAMPAIGN_INFO_FIELDS: { key: keyof NoteFrontMatter; label: string }[] = [
   { key: "tools", label: "Tools" },
   { key: "themes", label: "Themes" },
   { key: "tone", label: "Tone" },
-  { key: "notes", label: "Notes" }
+  { key: "notes", label: "Notes" },
+  { key: "game_context", label: "Game context", wide: true }
 ];
 
 export default function CampaignInfoPanel({ fm }: CampaignInfoPanelProps) {
@@ -29,10 +30,12 @@ export default function CampaignInfoPanel({ fm }: CampaignInfoPanelProps) {
       </button>
       {open && (
         <div className="campaign-info-grid">
-          {CAMPAIGN_INFO_FIELDS.map(({ key, label }) => (
-            <div className="campaign-info-row" key={key}>
+          {CAMPAIGN_INFO_FIELDS.map(({ key, label, wide }) => (
+            <div className={`campaign-info-row${wide ? " campaign-info-row-wide" : ""}`} key={key}>
               <span className="campaign-info-label">{label}</span>
-              <span className="campaign-info-value">{fm[key] ? String(fm[key]) : "—"}</span>
+              <span className="campaign-info-value" title={fm[key] ? String(fm[key]) : undefined}>
+                {fm[key] ? String(fm[key]) : "—"}
+              </span>
             </div>
           ))}
         </div>

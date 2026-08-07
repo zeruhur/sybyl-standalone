@@ -1,8 +1,17 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile, readDir, exists, readFile, writeFile, mkdir, remove } from "@tauri-apps/plugin-fs";
+import { appDataDir, join } from "@tauri-apps/api/path";
 import { load, Store } from "@tauri-apps/plugin-store";
 import { Buffer } from "buffer";
 import { NoteFrontMatter, VaultFile } from "./types";
+
+// The dialog plugin's Android backend has no folder-picker implementation at all
+// (only single/multi file pickers) — `open({ directory: true })` can never resolve
+// there. Android vaults auto-initialize in the app's own data directory instead;
+// see initAndroidVault() / isAndroid() below.
+export function isAndroid(): boolean {
+  return /android/i.test(navigator.userAgent);
+}
 
 // gray-matter unconditionally references the Node.js Buffer global, which doesn't
 // exist in the Tauri webview. Polyfill it with the standard browser shim.
@@ -37,6 +46,19 @@ export async function getSavedVaultPath(): Promise<string | null> {
     return path;
   }
   return null;
+}
+
+// Auto-initializes (or reopens) an app-private vault folder on Android, since there's no
+// working folder picker on that platform (see isAndroid() above). Idempotent — safe to call
+// on every launch.
+export async function initAndroidVault(): Promise<string> {
+  const vaultPath = await join(await appDataDir(), "vault");
+  if (!(await exists(vaultPath))) {
+    await mkdir(vaultPath, { recursive: true });
+  }
+  const store = await getStore();
+  await store.set("vaultPath", vaultPath);
+  return vaultPath;
 }
 
 export async function loadSetting<T>(key: string): Promise<T | undefined> {

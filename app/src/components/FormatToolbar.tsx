@@ -6,7 +6,7 @@ interface FormatToolbarProps {
   onStrikethrough: () => void;
   onCode: () => void;
   onCodeBlock: () => void;
-  onHeading: () => void;
+  onHeading: (level: number) => void;
   onBlockquote: () => void;
   onBulletList: () => void;
   onNumberedList: () => void;
@@ -64,7 +64,24 @@ export default function FormatToolbar({
       <button className="format-button" onClick={onBold} title="Bold (Ctrl+B)"><strong>B</strong></button>
       <button className="format-button" onClick={onItalic} title="Italic (Ctrl+I)"><em>I</em></button>
       <button className="format-button" onClick={onCode} title="Code (Ctrl+E)"><code>{"</>"}</code></button>
-      <button className="format-button" onClick={onHeading} title="Heading">H</button>
+      <select
+        className="format-heading-select"
+        value=""
+        onChange={(e) => {
+          const level = Number(e.currentTarget.value);
+          if (level) onHeading(level);
+          e.currentTarget.value = "";
+        }}
+        title="Heading level"
+      >
+        <option value="" disabled>H</option>
+        <option value="1">Heading 1</option>
+        <option value="2">Heading 2</option>
+        <option value="3">Heading 3</option>
+        <option value="4">Heading 4</option>
+        <option value="5">Heading 5</option>
+        <option value="6">Heading 6</option>
+      </select>
       <button className="format-button" onClick={onLink} title="Link">🔗</button>
       <span className="format-divider" />
       <div className="format-more" ref={menuRef}>

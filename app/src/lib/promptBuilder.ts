@@ -72,8 +72,6 @@ export function buildRequest(
   if (noteBody) {
     const ctx = parseLonelogContext(noteBody, settings.lonelogContextDepth);
     contextBlock = serializeContext(ctx);
-  } else if (fm.scene_context?.trim()) {
-    contextBlock = `SCENE CONTEXT:\n${fm.scene_context.trim()}`;
   }
 
   const contextMessage = contextBlock ? `${contextBlock}\n\n${userMessage}` : userMessage;

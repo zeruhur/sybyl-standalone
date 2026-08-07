@@ -35,7 +35,7 @@ export async function resolveSourcesForRequest(
 ): Promise<ResolvedSource[]> {
   const resolved: ResolvedSource[] = [];
   for (const ref of sources) {
-    if (providerId === "anthropic" || (providerId === "gemini" && ref.mime_type === "application/pdf")) {
+    if (ref.mime_type === "application/pdf" && (providerId === "anthropic" || providerId === "gemini")) {
       const bytes = await readFile(ref.vault_path);
       resolved.push({ ref, base64Data: arrayBufferToBase64(bytes) });
       continue;

@@ -13,8 +13,9 @@ cleanup if you need it as a porting reference.
   provider adapters, solo-toolkit engines, vault access)
 - `app/src/components/` — React UI components
 - `app/src-tauri/` — Rust/Tauri shell (commands, plugin config, mobile `gen/` targets)
-- `lonelog.md`, `lonelog-dice-notation-addon.md`, `lonelog-cards-addon.md` — the Lonelog notation
-  spec; parsing/formatting in `app/src/lib/lonelog/` must stay compatible with it
+- `docs/lonelog.md`, `docs/lonelog-dice-notation-addon.md`, `docs/lonelog-cards-addon.md` — the
+  Lonelog notation spec; parsing/formatting in `app/src/lib/lonelog/` must stay compatible with it
+- `docs/BUILDING.md` — how to build/run the app for desktop, Android, and iOS
 - `CLAUDE.md` — detailed, living architecture notes for this repo; read it before making
   non-trivial changes
 

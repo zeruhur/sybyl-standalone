@@ -1,3 +1,4 @@
+import { isAndroid } from "../lib/vault";
 import { VaultFile } from "../lib/types";
 
 interface SidebarProps {
@@ -12,6 +13,7 @@ interface SidebarProps {
   vaultPath: string | null;
   version: string;
   open: boolean;
+  onClose: () => void;
 }
 
 function FileRow({
@@ -57,17 +59,21 @@ export default function Sidebar({
   onDeleteNote,
   vaultPath,
   version,
-  open
+  open,
+  onClose
 }: SidebarProps) {
   const campaigns = files.filter((f) => f.fm.session_type !== "one_shot");
   const oneShots = files.filter((f) => f.fm.session_type === "one_shot");
 
   return (
-    <aside className={`sidebar${open ? " sidebar-open" : ""}`}>
-      <div className="sidebar-header">
-        <span className="vault-path" title={vaultPath ?? ""}>{vaultPath ? vaultPath.split(/[\\/]/).pop() : "No vault"}</span>
-        <button className="link-button" onClick={onChangeVault}>Change vault</button>
-      </div>
+    <>
+      {open && <div className="sidebar-backdrop" onClick={onClose} />}
+      <aside className={`sidebar${open ? " sidebar-open" : ""}`}>
+        <div className="sidebar-header">
+          <span className="vault-path" title={vaultPath ?? ""}>{vaultPath ? vaultPath.split(/[\\/]/).pop() : "No vault"}</span>
+          {!isAndroid() && <button className="link-button" onClick={onChangeVault}>Change vault</button>}
+          <button className="sidebar-close" onClick={onClose} title="Close sidebar">×</button>
+        </div>
       <div className="sidebar-note-actions">
         <button className="new-note-button" disabled={!vaultPath} onClick={onNewNote}>+ New Note</button>
         <button className="import-note-button" disabled={!vaultPath} onClick={onImportNote} title="Import Note">Import</button>
@@ -103,6 +109,7 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-footer">Sybyl{version ? ` v${version}` : ""}</div>
-    </aside>
+      </aside>
+    </>
   );
 }

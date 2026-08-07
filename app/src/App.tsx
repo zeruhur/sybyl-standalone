@@ -14,7 +14,7 @@ import FormatToolbar from "./components/FormatToolbar";
 import CampaignInfoPanel from "./components/CampaignInfoPanel";
 import ConfirmModal from "./components/ConfirmModal";
 import ToolkitPanel from "./components/ToolkitPanel";
-import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, listVaultFiles, loadSetting, pickVaultFolder, saveSetting, writeVaultFile } from "./lib/vault";
+import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, pickVaultFolder, saveSetting, writeVaultFile } from "./lib/vault";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
 import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
 import { generateWord } from "./lib/toolkit/wordGenerators";
@@ -35,7 +35,7 @@ import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
 import { GenerationRequest, NoteFrontMatter, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
 import { buildRequest, buildSystemPrompt } from "./lib/promptBuilder";
 import { getProvider } from "./lib/providers";
-import { parseLonelogContext, serializeContext } from "./lib/lonelog/parser";
+import { parseLonelogContext } from "./lib/lonelog/parser";
 import { inferMimeType, resolveSourcesForRequest } from "./lib/sourceUtils";
 import {
   formatAdventureSeed,
@@ -47,7 +47,7 @@ import {
   formatSuggestConsequence,
   LonelogFormatOptions
 } from "./lib/lonelog/formatter";
-import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, insertFootnote, isInsideCodeBlock, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
+import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, insertFootnote, isInsideCodeBlock, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
 import "./App.css";
 
 const NEW_NOTE_FIELDS: PromptField[] = [
@@ -189,7 +189,7 @@ export default function App() {
       }
       setSettings(normalized);
 
-      const saved = await getSavedVaultPath();
+      const saved = (await getSavedVaultPath()) ?? (isAndroid() ? await initAndroidVault() : null);
       if (saved) {
         setVaultPath(saved);
         await refreshFiles(saved);
@@ -352,9 +352,9 @@ export default function App() {
     if (view) wrapSelection(view, "`", "`");
   }
 
-  function formatHeading() {
+  function formatHeading(level: number) {
     const view = editorViewRef.current;
-    if (view) togglePrefixLine(view, "## ");
+    if (view) setHeadingLevel(view, level);
   }
 
   function formatLink() {
@@ -610,14 +610,16 @@ export default function App() {
   function cmdStartScene() {
     openModal(
       "Start Scene",
-      [{ key: "sceneDesc", label: "Scene description", placeholder: "Dark alley, midnight" }],
+      [{ key: "sceneDesc", label: "Scene description", optional: true, placeholder: "Leave blank to let Sybyl set the scene." }],
       async (values) => {
-        const sceneDesc = values.sceneDesc?.trim();
-        if (!sceneDesc) return;
         closeModal();
+        const sceneDesc = values.sceneDesc?.trim() ?? "";
         const counter = activeFileRef.current?.fm.scene_counter ?? 1;
+        const anchor = sceneDesc
+          ? `the atmosphere and setting of: "${sceneDesc}"`
+          : "a fitting location and atmosphere for the story so far, choosing one that makes sense given the established scene context";
         await runGeneration({
-          userMessage: `START SCENE. Generate only: 2-3 lines of third-person past-tense prose describing the atmosphere and setting of: "${sceneDesc}". No dialogue. No PC actions. No additional commentary.`,
+          userMessage: `START SCENE. Generate only: 2-3 lines of third-person past-tense prose describing ${anchor}. No dialogue. No PC actions. No additional commentary.`,
           format: (text) => formatStartScene(text, `S${counter}`, sceneDesc, lonelogOpts())
         });
         if (settings.lonelogAutoIncScene) {
@@ -630,13 +632,18 @@ export default function App() {
   function cmdDeclareAction() {
     openModal(
       "Declare Action",
-      [{ key: "action", label: "Action" }, { key: "roll", label: "Roll result" }],
+      [
+        { key: "action", label: "Action" },
+        { key: "roll", label: "Roll result", optional: true, placeholder: "Leave blank if there's no roll to report." }
+      ],
       async (values) => {
-        if (!values.action || !values.roll) return;
+        if (!values.action) return;
         closeModal();
+        const roll = values.roll?.trim() ?? "";
+        const rollLine = roll ? `\nRoll result: ${roll}` : "";
         await runGeneration({
-          userMessage: `PC action: ${values.action}\nRoll result: ${values.roll}\nDescribe only the consequences and world reaction. Do not describe the PC's action.`,
-          format: (text, insideCodeBlock) => formatDeclareAction(values.action, values.roll, text, lonelogOpts(insideCodeBlock))
+          userMessage: `PC action: ${values.action}${rollLine}\nDescribe only the consequences and world reaction. Do not describe the PC's action.`,
+          format: (text, insideCodeBlock) => formatDeclareAction(values.action, roll, text, lonelogOpts(insideCodeBlock))
         });
       }
     );
@@ -713,15 +720,6 @@ Keep it concise — 4 bullet points, one short sentence each.`;
     });
   }
 
-  async function cmdUpdateSceneContext() {
-    const file = activeFileRef.current;
-    if (!file) return;
-    const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
-    const parsed = parseLonelogContext(currentBody, settings.lonelogContextDepth);
-    await updateActiveFrontmatter({ scene_context: serializeContext(parsed) });
-    flashStatus("Scene context updated from log.");
-  }
-
   function cmdInsertCampaignHeader() {
     const fm = activeFileRef.current?.fm;
     if (!fm) return;
@@ -776,14 +774,16 @@ Keep it concise — 4 bullet points, one short sentence each.`;
 
   function cmdInsertQuickScene() {
     openModal(
-      "Insert Quick Scene",
-      [{ key: "sceneDesc", label: "Scene description", placeholder: "Dark alley, midnight" }],
+      "Insert Scene Template",
+      [{ key: "sceneDesc", label: "Scene description", optional: true, placeholder: "Dark alley, midnight" }],
       async (values) => {
-        const sceneDesc = values.sceneDesc?.trim();
-        if (!sceneDesc) return;
         closeModal();
+        const sceneDesc = values.sceneDesc?.trim() ?? "";
         const counter = activeFileRef.current?.fm.scene_counter ?? 1;
-        const block = `S${counter} *${sceneDesc}*\n\n@ \nd: \n=> \n\n? \n-> \n=> \n`;
+        // Scene titles are always Heading 3, and the trailing *...* is required by the scene
+        // parser/highlighter's regex even with no description to show.
+        const header = `### S${counter} *${sceneDesc}*`;
+        const block = `${header}\n\n@ \nd: \n=> \n\n? \n-> \n=> \n`;
         insertFormatted(block, "cursor");
         if (settings.lonelogAutoIncScene) {
           await updateActiveFrontmatter({ scene_counter: counter + 1 });
@@ -848,22 +848,26 @@ Keep it concise — 4 bullet points, one short sentence each.`;
     );
   }
 
+  // Both commands below prefer the already-digested `game_context` (fast, no per-request file
+  // re-read — see cmdDigestSource) and only fall back to requiring a raw attached source when no
+  // digest exists yet. `buildSystemPrompt` (used by runRawGeneration) already injects
+  // `game_context` into every request automatically, so the game-context branch just needs to
+  // skip the source picker rather than pass anything extra.
+
   function cmdAskTheRules() {
-    pickSourceThen("No sources attached to this note. Use Add Source File first.", (ref) => {
+    const gameContext = activeFileRef.current?.fm.game_context?.trim();
+
+    const ask = (resolvedSources: GenerationRequest["resolvedSources"]) => {
       openModal("Ask the Rules", [{ key: "question", label: "Question", placeholder: "How does Momentum work?" }], async (values) => {
         const question = values.question?.trim();
         if (!question) return;
         closeModal();
-        let resolvedSources;
-        try {
-          resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
-        } catch (error) {
-          flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
-          return;
-        }
         const ruleset = activeFileRef.current?.fm.ruleset ?? "the game";
+        const groundingInstruction = gameContext
+          ? "using the game context and any provided source material"
+          : "using only the provided source material";
         const prompt = `You are a rules reference for "${ruleset}".
-Answer the following question using only the provided source material.
+Answer the following question ${groundingInstruction}.
 Be precise and cite the relevant rule or page section if possible.
 
 Question: ${question}`;
@@ -874,24 +878,36 @@ Question: ${question}`;
           onResult: (text) => insertFormatted(`> [Rules] ${text.trim().replace(/\n/g, "\n> ")}`, "cursor")
         });
       });
+    };
+
+    if (gameContext) {
+      ask([]);
+      return;
+    }
+    pickSourceThen("No digested game context or sources attached. Use Digest Source into Game Context or Add Source File first.", (ref) => {
+      (async () => {
+        let resolvedSources;
+        try {
+          resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
+        } catch (error) {
+          flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
+          return;
+        }
+        ask(resolvedSources);
+      })();
     });
   }
 
   function cmdGenerateCharacter() {
-    pickSourceThen("No sources attached to this note. Add a rulebook first via Add Source File.", (ref) => {
+    const gameContext = activeFileRef.current?.fm.game_context?.trim();
+
+    const generate = (resolvedSources: GenerationRequest["resolvedSources"]) => {
       openModal(
         "Generate Character",
         [{ key: "concept", label: "Character concept", optional: true, placeholder: "Leave blank for a random character." }],
         async (values) => {
           closeModal();
           const concept = values.concept?.trim();
-          let resolvedSources;
-          try {
-            resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
-          } catch (error) {
-            flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
-            return;
-          }
           const ruleset = activeFileRef.current?.fm.ruleset ?? "the game";
           const formatInstruction = `Format the output as a Lonelog PC tag. Use the multi-line form for complex characters:
 [PC:Name
@@ -900,7 +916,10 @@ Question: ${question}`;
   | trait: value1, value2
 ]
 Include all stats and fields exactly as defined by the rules. Output the tag only — no extra commentary.`;
-          const prompt = `Using ONLY the character creation rules in the provided source material, generate a character for "${ruleset}".
+          const groundingInstruction = gameContext
+            ? "Using the game context and any provided source material,"
+            : "Using ONLY the character creation rules in the provided source material,";
+          const prompt = `${groundingInstruction} generate a character for "${ruleset}".
 
 Follow the exact character creation procedure described in the rules. Do not invent mechanics not present in the source.
 
@@ -915,6 +934,23 @@ ${formatInstruction}`;
           });
         }
       );
+    };
+
+    if (gameContext) {
+      generate([]);
+      return;
+    }
+    pickSourceThen("No digested game context or sources attached. Use Digest Source into Game Context or Add Source File first.", (ref) => {
+      (async () => {
+        let resolvedSources;
+        try {
+          resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
+        } catch (error) {
+          flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
+          return;
+        }
+        generate(resolvedSources);
+      })();
     });
   }
 
@@ -1046,11 +1082,10 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     { id: "adventure-seed", label: "Adventure Seed", run: cmdAdventureSeed },
     { id: "what-now", label: "What Now", run: cmdWhatNow },
     { id: "what-can-i-do", label: "What Can I Do", run: cmdWhatCanIDo },
-    { id: "update-scene-context", label: "Update Scene Context", run: cmdUpdateSceneContext },
     { id: "insert-campaign-header", label: "Insert Campaign Header", run: cmdInsertCampaignHeader },
     { id: "new-session-header", label: "New Session Header", run: cmdNewSessionHeader },
     { id: "edit-campaign-info", label: "Edit Campaign Info", run: cmdEditCampaignInfo },
-    { id: "insert-quick-scene", label: "Insert Quick Scene", run: cmdInsertQuickScene },
+    { id: "insert-quick-scene", label: "Insert Scene Template", run: cmdInsertQuickScene },
     { id: "add-source-file", label: "Add Source File", run: cmdAddSourceFile },
     { id: "manage-sources", label: "Manage Sources", run: cmdManageSources },
     { id: "ask-the-rules", label: "Ask the Rules", run: cmdAskTheRules },
@@ -1078,6 +1113,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         vaultPath={vaultPath}
         version={version}
         open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
       <main className="main-pane">
         <div className="command-bar">
@@ -1157,7 +1193,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
               onHorizontalRule={formatHorizontalRule}
               onFootnote={formatFootnote}
             />
-            <Editor value={body} onChange={handleBodyChange} editorRef={editorViewRef} />
+            <Editor value={body} onChange={handleBodyChange} theme={settings.theme} editorRef={editorViewRef} />
           </>
         ) : (
           <div className="empty-state">

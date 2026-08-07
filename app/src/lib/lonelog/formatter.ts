@@ -17,7 +17,9 @@ export function formatStartScene(
   sceneDesc: string,
   _opts: LonelogFormatOptions
 ): string {
-  const header = `### ${sceneId} *${sceneDesc}*`;
+  // The trailing *...* is required by the scene parser/highlighter's regex even when there's no
+  // description to show — dropping it entirely would make the header unrecognizable as a scene.
+  const header = `### ${sceneId} *${sceneDesc.trim()}*`;
   const body = cleanAiText(aiText);
   return `${header}\n\n${body}`;
 }
@@ -33,7 +35,8 @@ export function formatDeclareAction(
     .filter(Boolean)
     .map((line) => (line.startsWith("=>") ? line : `=> ${line}`))
     .join("\n");
-  const notation = `@ ${action}\nd: ${roll}\n${consequence}`;
+  const rollLine = roll.trim() ? `\nd: ${roll}` : "";
+  const notation = `@ ${action}${rollLine}\n${consequence}`;
   return opts.wrapInCodeBlock ? fence(notation) : notation;
 }
 

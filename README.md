@@ -31,11 +31,10 @@ storyteller.
 - **What Now** — suggests complications or consequences
 - **What Can I Do** — lists available moves/actions given the current scene
 - **Expand Scene** — expands the current scene into prose
-- **Update Scene Context** — parses the Lonelog session log into `scene_context`
 - **Insert Campaign Header** — scaffolds the campaign title + first session/scene skeleton
 - **New Session Header** — inserts a Lonelog session break
 - **Edit Campaign Info** — edits a note's campaign frontmatter fields
-- **Insert Quick Scene** — inserts a bare scene skeleton for manual, non-AI play
+- **Insert Scene Template** — inserts a bare scene skeleton for manual, non-AI play
 - **Add Source File** / **Manage Sources** — attaches and manages source files on a note
 - **Ask the Rules** — queries the active ruleset for rules clarifications
 - **Generate Character** — generates a character concept
@@ -56,8 +55,9 @@ they aren't tied to a single active note.
 
 Sybyl works inside the active note. Each request is stateless and built from:
 
-- note frontmatter (`ruleset`, `pc_name`, `game_context`, `scene_context`, etc.)
-- the current scene context
+- note frontmatter (`ruleset`, `pc_name`, `game_context`, etc.)
+- the current scene context, parsed live from the note body on every request — there's no
+  separate cached copy to keep in sync
 - the command-specific prompt
 
 Source files are distilled once into a compact `game_context` block via the **Digest Source into
@@ -81,10 +81,12 @@ npm run tauri dev
 
 Pushing a tag (e.g. `v0.11.0`) triggers `.github/workflows/release.yml`, which builds installers
 for Windows, macOS, and Linux, plus Android and iOS packages, and attaches them to a GitHub
-Release. See that workflow for exact artifact names and signing requirements.
+Release. See that workflow for exact artifact names and signing requirements, or
+[`docs/BUILDING.md`](docs/BUILDING.md) for how to build each target locally.
 
 ## Lonelog Notation
 
-`lonelog.md` and its dice/card notation addons (`lonelog-dice-notation-addon.md`,
-`lonelog-cards-addon.md`) define the note format Sybyl reads and writes. Parsing/formatting in
-`app/src/lib/lonelog/` must stay compatible with it.
+[`docs/lonelog.md`](docs/lonelog.md) and its dice/card notation addons
+([`docs/lonelog-dice-notation-addon.md`](docs/lonelog-dice-notation-addon.md),
+[`docs/lonelog-cards-addon.md`](docs/lonelog-cards-addon.md)) define the note format Sybyl reads
+and writes. Parsing/formatting in `app/src/lib/lonelog/` must stay compatible with it.

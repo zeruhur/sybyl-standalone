@@ -167,6 +167,12 @@ jobs:
           NDK_HOME: ${{ steps.ndk.outputs['ndk-path'] }}
         run: npm run tauri -- android init
 
+      - name: Regenerate app icon
+        # `android init` scaffolds the project with Tauri's default launcher icon; overwrite it
+        # with ours before building.
+        working-directory: app
+        run: npm run tauri -- icon src-tauri/icons/icon.png
+
       - name: Configure signing
         if: ${{ env.ANDROID_SIGNING_CONFIGURED == 'true' }}
         working-directory: app
@@ -234,6 +240,12 @@ jobs:
       - name: Initialize iOS project
         working-directory: app
         run: npm run tauri -- ios init
+
+      - name: Regenerate app icon
+        # `ios init` scaffolds the project with Tauri's default app icon; overwrite it with ours
+        # before building.
+        working-directory: app
+        run: npm run tauri -- icon src-tauri/icons/icon.png
 
       - name: Import signing certificate and provisioning profile
         if: ${{ env.APPLE_SIGNING_CONFIGURED == 'true' }}

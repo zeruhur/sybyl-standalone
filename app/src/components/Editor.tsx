@@ -12,15 +12,38 @@ import { wrapSelection } from "../lib/editorUtils";
 interface EditorProps {
   value: string;
   onChange: (value: string) => void;
+  theme: "dark" | "light";
   editorRef?: React.MutableRefObject<EditorView | null>;
 }
 
-export default function Editor({ value, onChange, editorRef }: EditorProps) {
+// oneDark bundles both chrome colors and a dark-appropriate syntax HighlightStyle, already
+// proven out visually — kept as-is for dark mode. Light mode needs its own chrome to match the
+// warm-parchment palette (App.css's `:root[data-theme="light"]`); basicSetup's own
+// defaultHighlightStyle (designed for light backgrounds) already handles syntax token colors,
+// so this only needs to cover editor/gutter/selection/cursor chrome.
+const lightEditorTheme = EditorView.theme({
+  "&": { backgroundColor: "#f6f3ee", color: "#221f1a" },
+  ".cm-content": { caretColor: "#221f1a" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#221f1a" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+    backgroundColor: "#d9cfa8"
+  },
+  ".cm-gutters": { backgroundColor: "#ece7de", color: "#6e6558", border: "none" },
+  ".cm-activeLine": { backgroundColor: "#ece7de" },
+  ".cm-activeLineGutter": { backgroundColor: "#ece7de" }
+});
+
+export default function Editor({ value, onChange, theme, editorRef }: EditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
+  // Fully remounts the EditorView when the theme flips, rather than hot-swapping a CM6
+  // Compartment. A Compartment must stay bound to a single EditorView's lifecycle; sharing one
+  // across remounts (e.g. React StrictMode's double-invoked effects in dev) left the dark theme
+  // partially applied. A clean remount trades preserving scroll/cursor position across a theme
+  // toggle — a rare, deliberate action — for guaranteed-correct styling every time.
   useEffect(() => {
     if (!hostRef.current) return;
     const state = EditorState.create({
@@ -37,7 +60,7 @@ export default function Editor({ value, onChange, editorRef }: EditorProps) {
         ]),
         markdown({ extensions: GFM }),
         lonelogHighlight(),
-        oneDark,
+        theme === "dark" ? oneDark : lightEditorTheme,
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -55,7 +78,7 @@ export default function Editor({ value, onChange, editorRef }: EditorProps) {
       if (editorRef) editorRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [theme]);
 
   useEffect(() => {
     const view = viewRef.current;
