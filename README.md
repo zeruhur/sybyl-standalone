@@ -4,7 +4,7 @@
 
 [![GitHub tag (Latest by date)](https://img.shields.io/github/v/tag/zeruhur/sybyl-standalone)](https://github.com/zeruhur/sybyl-standalone/releases) ![GitHub all releases](https://img.shields.io/github/downloads/zeruhur/sybyl-standalone/total)
 
-Sybyl is a standalone desktop app for solo tabletop play with provider-backed AI assistance and
+Sybyl is a standalone app for solo tabletop play with provider-backed AI assistance and
 Lonelog-aware note formatting, built on Tauri + React + CodeMirror 6.
 
 It enforces a strict neutral, third-person, non-directive AI persona: it never narrates the
