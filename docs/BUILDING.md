@@ -122,11 +122,26 @@ adb install <path-to-signed-apk>
 (Or copy the signed APK to the device manually and allow "install unknown apps" for whatever app
 opens it.)
 
-For a **real** signed release (Play Store or distributable outside it), use a real keystore and
-follow [Tauri's Android signing guide](https://tauri.app/distribute/sign/android/) — the release
-workflow expects `ANDROID_KEYSTORE_BASE64`/`ANDROID_KEYSTORE_PASSWORD`/`ANDROID_KEY_ALIAS`/
-`ANDROID_KEY_PASSWORD` as repository secrets and writes them into
-`src-tauri/gen/android/keystore.properties` before building.
+For a **real** signed release, the release workflow signs the Android outputs itself once four
+repository secrets are set:
+
+```bash
+keytool -genkeypair -v -keystore sybyl-release.jks -alias sybyl -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 sybyl-release.jks | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEYSTORE_PASSWORD
+gh secret set ANDROID_KEY_ALIAS        # e.g. sybyl
+gh secret set ANDROID_KEY_PASSWORD
+```
+
+Keep the `.jks` and its password backed up outside the repo. Android only accepts an update
+signed with the same key, so losing it means installed copies can never be updated.
+
+The workflow signs *after* the Gradle build (`zipalign` + `apksigner` for the APK, `jarsigner`
+for the AAB) rather than through Gradle. `tauri android init` regenerates the Gradle project on
+every CI run, and the generated `build.gradle.kts` has no signing config, so a
+`keystore.properties` file on its own is never read. The signed files are uploaded as
+`Sybyl_<version>_android.apk`/`.aab`. Without the secrets, the unsigned outputs are uploaded
+instead.
 
 Disk space: ~8-12 GB from a clean machine (SDK + NDK + Gradle caches + Rust android targets +
 build artifacts); ~2-4 GB on top of an existing Android Studio install.

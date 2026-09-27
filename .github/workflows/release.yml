@@ -6,8 +6,8 @@ name: Release
 #   - Windows (.msi / .exe)          - always
 #   - macOS, universal binary (.dmg) - always
 #   - Linux (.deb / .rpm / .AppImage)- always
-#   - Android (.apk / .aab)          - always; signed if ANDROID_* secrets are set, otherwise a
-#                                       debug-signed build is produced for internal testing.
+#   - Android (.apk / .aab)          - always; signed if ANDROID_* secrets are set, otherwise
+#                                       unsigned (an unsigned APK can't be installed as-is).
 #   - iOS (.ipa)                     - always; requires an Apple Developer account. If the
 #                                       APPLE_* secrets below are not configured, this job builds
 #                                       for the simulator only and does not attach an artifact
@@ -17,7 +17,7 @@ name: Release
 # Required repository secrets:
 #   Desktop update signing (optional, only needed if the Tauri updater is enabled):
 #     TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-#   Android signing (optional — falls back to a debug keystore otherwise):
+#   Android signing (optional — without it the APK/AAB are uploaded unsigned):
 #     ANDROID_KEYSTORE_BASE64   - `base64 -w0 your.jks`
 #     ANDROID_KEYSTORE_PASSWORD
 #     ANDROID_KEY_ALIAS
@@ -177,36 +177,59 @@ jobs:
         working-directory: app
         run: npm run tauri -- icon src-tauri/icons/icon.png
 
-      - name: Configure signing
-        if: ${{ env.ANDROID_SIGNING_CONFIGURED == 'true' }}
-        working-directory: app
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          cat > src-tauri/gen/android/keystore.properties <<EOF
-          password=$ANDROID_KEY_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          storeFile=$RUNNER_TEMP/release.jks
-          storePassword=$ANDROID_KEYSTORE_PASSWORD
-          EOF
-
       - name: Build Android APK/AAB
         working-directory: app
         env:
           NDK_HOME: ${{ steps.ndk.outputs['ndk-path'] }}
         run: npm run tauri -- android build
 
+      - name: Collect Android artifacts
+        # Copies exactly the two release outputs. A blanket `find -name "*.aab"` also picked up
+        # Gradle's intermediary-bundle.aab and uploaded it to the release.
+        run: |
+          OUT=app/src-tauri/gen/android/app/build/outputs
+          DIST="$RUNNER_TEMP/android-dist"
+          mkdir -p "$DIST"
+          cp "$OUT/apk/universal/release/app-universal-release-unsigned.apk" "$DIST/"
+          cp "$OUT/bundle/universalRelease/app-universal-release.aab" "$DIST/"
+
+      - name: Sign Android artifacts
+        # Signs after the build rather than via Gradle: `tauri android init` regenerates the
+        # Gradle project on every run, and its build.gradle.kts has no signing config, so a
+        # keystore.properties file alone is never read. zipalign + apksigner for the APK (the
+        # sideloadable file), jarsigner for the AAB (Play Store upload).
+        if: ${{ env.ANDROID_SIGNING_CONFIGURED == 'true' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          DIST="$RUNNER_TEMP/android-dist"
+          KS="$RUNNER_TEMP/release.jks"
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KS"
+          trap 'rm -f "$KS"' EXIT
+
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$DIST/app-universal-release-unsigned.apk" "$RUNNER_TEMP/aligned.apk"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$KS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "$DIST/Sybyl_${VERSION}_android.apk" "$RUNNER_TEMP/aligned.apk"
+          "$BUILD_TOOLS/apksigner" verify "$DIST/Sybyl_${VERSION}_android.apk"
+
+          mv "$DIST/app-universal-release.aab" "$DIST/Sybyl_${VERSION}_android.aab"
+          jarsigner -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore "$KS" -storepass:env ANDROID_KEYSTORE_PASSWORD -keypass:env ANDROID_KEY_PASSWORD \
+            "$DIST/Sybyl_${VERSION}_android.aab" "$ANDROID_KEY_ALIAS"
+
+          rm "$DIST/app-universal-release-unsigned.apk"
+
       - name: Upload Android artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "${{ github.ref_name }}" \
-            $(find app/src-tauri/gen/android -type f \( -name "*.apk" -o -name "*.aab" \)) \
-            --clobber
+        run: gh release upload "${{ github.ref_name }}" "$RUNNER_TEMP"/android-dist/* --clobber
 
   ios:
     needs: create-release
