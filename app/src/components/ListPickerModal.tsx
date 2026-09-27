@@ -45,6 +45,8 @@ export default function ListPickerModal({ title, items, onPick, onClose }: ListP
           {items.map((item, i) => (
             <li key={item.id}>
               <button
+                // Takes focus on open so Enter/arrow keys don't also reach the editor underneath.
+                autoFocus={i === 0}
                 className={`palette-item${i === selected ? " selected" : ""}`}
                 onMouseEnter={() => setSelected(i)}
                 onClick={() => onPick(item.id)}

@@ -113,7 +113,7 @@ export default function Sidebar({
         <button disabled={!activePath} onClick={onVersionHistory} title="View and restore previous snapshots of this note">History</button>
       </div>
 
-      <AccordionSection title="Campagne in corso" count={campaigns.length} emptyMessage="No campaigns yet.">
+      <AccordionSection title="Campaigns" count={campaigns.length} emptyMessage="No campaigns yet.">
         {campaigns.map((f) => (
           <FileRow
             key={f.path}

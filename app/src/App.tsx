@@ -36,7 +36,7 @@ import {
 import { cutUpText, CutUpMode } from "./lib/toolkit/cutup";
 import { keychainGet, keychainSet } from "./lib/keychain";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
-import { GenerationRequest, NoteFrontMatter, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
+import { GenerationRequest, NoteFrontMatter, ProviderID, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
 import { buildRequest, buildSystemPrompt } from "./lib/promptBuilder";
 import { getProvider } from "./lib/providers";
 import { parseLonelogContext } from "./lib/lonelog/parser";
@@ -186,6 +186,8 @@ export default function App() {
 
   const editorViewRef = useRef<EditorView | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
+  const pendingSaveRef = useRef<{ file: VaultFile; body: string } | null>(null);
+  const statusTimer = useRef<number | undefined>(undefined);
   const activeFileRef = useRef<VaultFile | null>(null);
   activeFileRef.current = activeFile;
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -236,7 +238,8 @@ export default function App() {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setPaletteOpen((open) => !open);
+        // Mirrors the Commands button's disabled state: every palette command needs an open note.
+        if (activeFileRef.current) setPaletteOpen((open) => !open);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
         e.preventDefault();
         setSwitcherOpen((open) => !open);
@@ -249,15 +252,22 @@ export default function App() {
   async function handleChangeVault() {
     const picked = await pickVaultFolder();
     if (!picked) return;
+    await flushPendingSave();
     setVaultPath(picked);
     setActiveFile(null);
+    activeFileRef.current = null;
     setBody("");
+    // The custom deck session holds image paths inside the old vault.
+    setCustomDeckSession(null);
     await refreshFiles(picked);
     await refreshTableFiles(picked);
     await refreshDeckFolders(picked);
   }
 
   function selectFile(file: VaultFile) {
+    setSidebarOpen(false);
+    if (file.path === activeFileRef.current?.path) return;
+    void flushPendingSave();
     setActiveFile(file);
     setBody(file.body);
     setLastGeneration(null);
@@ -266,24 +276,50 @@ export default function App() {
     }
   }
 
-  const persistBody = useCallback((path: string, nextBody: string) => {
+  /** Writes the pending debounced body save (if any) right now. Called by the debounce timer and
+   * before switching notes, so an edit made less than 500ms before a switch isn't dropped. */
+  const flushPendingSave = useCallback(async () => {
     window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(async () => {
-      const file = activeFileRef.current;
-      if (!file || file.path !== path) return;
-      const nextFm: NoteFrontMatter = { ...file.fm, ...compileFrontmatter(nextBody, settings.lonelogContextDepth) };
-      await writeVaultFile(path, nextFm, nextBody);
-      const updated: VaultFile = { ...file, fm: nextFm, body: nextBody };
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    if (!pending) return;
+    // Prefer the live in-memory file while it's still active — its frontmatter may have been
+    // patched since the save was scheduled (e.g. a scene_counter bump) — and fall back to the
+    // copy captured at schedule time once the user has moved on to another note.
+    const live = activeFileRef.current;
+    const base = live && live.path === pending.file.path ? live : pending.file;
+    const nextFm: NoteFrontMatter = { ...base.fm, ...compileFrontmatter(pending.body, settings.lonelogContextDepth) };
+    await writeVaultFile(base.path, nextFm, pending.body);
+    const updated: VaultFile = { ...base, fm: nextFm, body: pending.body };
+    if (activeFileRef.current?.path === updated.path) {
       setActiveFile(updated);
       activeFileRef.current = updated;
-      setFiles((prev) => prev.map((f) => (f.path === updated.path ? updated : f)));
-    }, 500);
+    }
+    setFiles((prev) => prev.map((f) => (f.path === updated.path ? updated : f)));
   }, [settings.lonelogContextDepth]);
+
+  const persistBody = useCallback((file: VaultFile, nextBody: string) => {
+    if (pendingSaveRef.current && pendingSaveRef.current.file.path !== file.path) {
+      void flushPendingSave();
+    }
+    pendingSaveRef.current = { file, body: nextBody };
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => void flushPendingSave(), 500);
+  }, [flushPendingSave]);
+
+  /** Drops a pending save for `path` without writing it — for when the note is about to be
+   * deleted or overwritten, where a late write would resurrect or clobber it. */
+  function discardPendingSave(path: string) {
+    if (pendingSaveRef.current?.file.path !== path) return;
+    window.clearTimeout(saveTimer.current);
+    pendingSaveRef.current = null;
+  }
 
   function handleBodyChange(next: string) {
     setBody(next);
-    if (activeFile) {
-      persistBody(activeFile.path, next);
+    const file = activeFileRef.current;
+    if (file) {
+      persistBody(file, next);
     }
   }
 
@@ -338,6 +374,7 @@ export default function App() {
     const target = deleteTarget;
     setDeleteTarget(null);
     if (!target || !vaultPath) return;
+    discardPendingSave(target.path);
     try {
       await deleteVaultFile(target.path);
       await deleteSnapshots(vaultPath, target.name).catch(() => {});
@@ -459,6 +496,13 @@ export default function App() {
 
   async function saveSettings(next: SybylSettings) {
     setSettings(next);
+    // The keyring crate has no Android backend (it silently falls back to a no-op mock store),
+    // so on Android the keys stay in the app-private settings store. Blanking them there, as on
+    // desktop, would lose every API key on the next launch.
+    if (isAndroid()) {
+      await saveSetting("sybylSettings", next);
+      return;
+    }
     const toStore: SybylSettings = {
       ...next,
       providers: {
@@ -507,12 +551,12 @@ export default function App() {
           : insertAtCursor(view, formatted);
       const nextBody = view.state.doc.toString();
       setBody(nextBody);
-      if (file) persistBody(file.path, nextBody);
+      if (file) persistBody(file, nextBody);
       return range;
     } else if (file) {
       const nextBody = `${body}\n${formatted}\n`;
       setBody(nextBody);
-      persistBody(file.path, nextBody);
+      persistBody(file, nextBody);
     }
     return null;
   }
@@ -527,13 +571,35 @@ export default function App() {
     view.focus();
     const nextBody = view.state.doc.toString();
     setBody(nextBody);
-    if (file) persistBody(file.path, nextBody);
+    if (file) persistBody(file, nextBody);
     return { from: range.from, to: range.from + formatted.length };
   }
 
-  function flashStatus(text: string, ms = 4000) {
+  /** Shows a status message until something replaces it (e.g. "generating..."). Also cancels any
+   * pending flashStatus auto-clear, which would otherwise blank this message — and hide the
+   * Cancel button with it — partway through a long generation. */
+  function showStatus(text: string) {
+    window.clearTimeout(statusTimer.current);
     setStatus(text);
-    window.setTimeout(() => setStatus(""), ms);
+  }
+
+  function flashStatus(text: string, ms = 4000) {
+    showStatus(text);
+    statusTimer.current = window.setTimeout(() => setStatus(""), ms);
+  }
+
+  /** A note's own `provider:` frontmatter overrides the active provider from Settings (and its
+   * `model:` overrides the model — see executeGeneration/runRawGeneration). */
+  function providerIdFor(fm: NoteFrontMatter): ProviderID {
+    return fm.provider ?? settings.activeProvider;
+  }
+
+  /** Generation is async and the user can switch notes while waiting; this keeps a result from
+   * landing in whichever note happens to be open when it arrives. */
+  function stillActive(file: VaultFile): boolean {
+    if (activeFileRef.current?.path === file.path) return true;
+    flashStatus(`Sybyl: you switched notes while generating, so the result for ${file.name} was discarded.`, 6000);
+    return false;
   }
 
   /** Core pipeline shared by every LLM-backed command: frontmatter+body -> provider -> formatter ->
@@ -547,23 +613,30 @@ export default function App() {
     replaceRange: InsertedRange | null;
   }) {
     const { file, userMessage, format, maxOutputTokens, placement, replaceRange } = args;
+    let succeeded = false;
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     setLoading(true);
-    setStatus("Sybyl: generating...");
+    showStatus("Sybyl: generating...");
     try {
-      const provider = getProvider(settings);
-      const view = editorViewRef.current;
-      const currentBody = view?.state.doc.toString() ?? body;
-      const insideCodeBlock = view ? isInsideCodeBlock(view) : false;
-      const request = buildRequest(file.fm, userMessage, settings, maxOutputTokens, currentBody);
+      const provider = getProvider(settings, providerIdFor(file.fm));
+      const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+      const request: GenerationRequest = {
+        ...buildRequest(file.fm, userMessage, settings, maxOutputTokens, currentBody),
+        model: file.fm.model
+      };
       const response = await provider.generate(request, controller.signal);
+      if (!stillActive(file)) return false;
+      // Read after the await: the cursor may have moved while the request was in flight.
+      const view = editorViewRef.current;
+      const insideCodeBlock = view ? isInsideCodeBlock(view) : false;
       const formatted = format(response.text, insideCodeBlock);
       const range = replaceRange ? replaceFormatted(formatted, replaceRange) : insertFormatted(formatted, placement);
       setLastGeneration({ filePath: file.path, userMessage, format, maxOutputTokens, placement, insertedText: formatted, range });
       flashStatus("Sybyl: done.");
+      succeeded = true;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         flashStatus("Sybyl: cancelled.");
@@ -574,18 +647,20 @@ export default function App() {
       setLoading(false);
       abortControllerRef.current = null;
     }
+    return succeeded;
   }
 
+  /** Resolves true only if the generation completed and its output was inserted. */
   async function runGeneration(options: {
     userMessage: string;
     format: (text: string, insideCodeBlock: boolean) => string;
     maxOutputTokens?: number;
     placement?: Placement;
-  }) {
+  }): Promise<boolean> {
     const file = activeFileRef.current;
-    if (!file) return;
+    if (!file) return false;
     const { userMessage, format, maxOutputTokens = settings.defaultMaxOutputTokens, placement = "cursor" } = options;
-    await executeGeneration({ file, userMessage, format, maxOutputTokens, placement, replaceRange: null });
+    return executeGeneration({ file, userMessage, format, maxOutputTokens, placement, replaceRange: null });
   }
 
   /** Re-sends the last LLM-backed generation's exact request and swaps its output in place for a
@@ -631,17 +706,19 @@ export default function App() {
     abortControllerRef.current = controller;
 
     setLoading(true);
-    setStatus("Sybyl: generating...");
+    showStatus("Sybyl: generating...");
     try {
-      const provider = getProvider(settings);
+      const provider = getProvider(settings, providerIdFor(file.fm));
       const request: GenerationRequest = {
         systemPrompt: buildSystemPrompt(file.fm),
         userMessage: options.userMessage,
         resolvedSources: options.resolvedSources,
         temperature: file.fm.temperature ?? settings.defaultTemperature,
-        maxOutputTokens: options.maxOutputTokens
+        maxOutputTokens: options.maxOutputTokens,
+        model: file.fm.model
       };
       const response = await provider.generate(request, controller.signal);
+      if (!stillActive(file)) return;
       await options.onResult(response.text);
       flashStatus("Sybyl: done.");
     } catch (error) {
@@ -708,11 +785,12 @@ export default function App() {
         const anchor = sceneDesc
           ? `the atmosphere and setting of: "${sceneDesc}"`
           : "a fitting location and atmosphere for the story so far, choosing one that makes sense given the established scene context";
-        await runGeneration({
+        const inserted = await runGeneration({
           userMessage: `START SCENE. Generate only: 2-3 lines of third-person past-tense prose describing ${anchor}. No dialogue. No PC actions. No additional commentary.`,
           format: (text) => formatStartScene(text, `S${counter}`, sceneDesc, lonelogOpts())
         });
-        if (settings.lonelogAutoIncScene) {
+        // A failed or cancelled generation inserted no scene header, so don't burn the number.
+        if (inserted && settings.lonelogAutoIncScene) {
           await updateActiveFrontmatter({ scene_counter: counter + 1 });
         }
       }
@@ -988,7 +1066,7 @@ Question: ${question}`;
       (async () => {
         let resolvedSources;
         try {
-          resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
+          resolvedSources = await resolveSourcesForRequest([ref], providerIdFor(activeFileRef.current?.fm ?? {}));
         } catch (error) {
           flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
           return;
@@ -1044,7 +1122,7 @@ ${formatInstruction}`;
       (async () => {
         let resolvedSources;
         try {
-          resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
+          resolvedSources = await resolveSourcesForRequest([ref], providerIdFor(activeFileRef.current?.fm ?? {}));
         } catch (error) {
           flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
           return;
@@ -1058,7 +1136,7 @@ ${formatInstruction}`;
     pickSourceThen("No sources attached to this note. Use Add Source File first.", async (ref) => {
       let resolvedSources;
       try {
-        resolvedSources = await resolveSourcesForRequest([ref], settings.activeProvider);
+        resolvedSources = await resolveSourcesForRequest([ref], providerIdFor(activeFileRef.current?.fm ?? {}));
       } catch (error) {
         flashStatus(`Cannot read source: ${error instanceof Error ? error.message : String(error)}`);
         return;
@@ -1104,6 +1182,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     const file = activeFileRef.current;
     if (!vaultPath || !file) return;
     setHistoryOpen(false);
+    discardPendingSave(file.path);
     try {
       const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
       await saveSnapshot(vaultPath, { ...file, body: currentBody });
@@ -1191,7 +1270,12 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     const { session, card } = drawCustomCard(customDeckSession);
     setCustomDeckSession(session);
     if (!card) return undefined;
-    return { path: card, dataUri: await imageToDataUri(card) };
+    try {
+      return { path: card, dataUri: await imageToDataUri(card) };
+    } catch (error) {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    }
   }
 
   function toolkitReshuffleCustomDeck() {

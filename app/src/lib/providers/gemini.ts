@@ -42,7 +42,10 @@ export class GeminiProvider implements AIProvider {
         generationConfig: {
           temperature: request.temperature,
           maxOutputTokens: request.maxOutputTokens,
-          thinkingConfig: { thinkingBudget: 0 }
+          // Thinking tokens count against maxOutputTokens, so it's switched off where the model
+          // allows it. Only 2.5 Flash/Flash-Lite accept a zero budget — 2.5 Pro and newer
+          // models reject the request outright ("only works in thinking mode").
+          ...(/2\.5-flash/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {})
         }
       }),
       signal

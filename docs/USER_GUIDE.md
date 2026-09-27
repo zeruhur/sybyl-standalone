@@ -109,9 +109,8 @@ deletes its snapshot history.
 
 ## Commands
 
-Open the palette with **Commands** (Ctrl+K) — it needs an active note. There's no text filter;
-use the arrow keys or mouse to pick one. Typing while the palette is focused elsewhere falls
-through into the editor, so click or arrow-key to a command rather than trying to type its name.
+Open the palette with **Commands** (Ctrl+K) — it needs an active note. Type to filter the list,
+then pick a command with the arrow keys and Enter, or with the mouse.
 
 AI-backed commands:
 
@@ -207,6 +206,13 @@ configuration for Claude (Anthropic), OpenAI, Gemini, and Ollama:
   model you have configured is always kept selectable even before refreshing, or if it's since
   fallen out of the provider's list.
 - Ollama only needs a base URL (defaults to a local install) — no key.
+- On Android there's no OS keychain backend, so keys are kept in the app's private settings
+  storage instead.
+
+**Per-note overrides.** A note's YAML frontmatter can override the Settings defaults for that note
+only: `provider:` (`anthropic`, `openai`, `gemini`, or `ollama`), `model:`, `temperature:`, and
+`language:` (the response language). Edit the `.md` file in another editor to set them, since the
+in-app editor doesn't show frontmatter.
 
 ## Import and export
 
@@ -250,5 +256,7 @@ Sybyl runs on Android with a few differences from desktop:
 - **Ask the Rules / Generate Character keep asking to pick a source.** — run **Digest Source into
   Game Context** once first; both commands prefer the digest and only fall back to a raw source
   pick when nothing's been digested yet.
-- **A command palette keypress typed into the note instead of filtering the list.** — the palette
-  has no text filter by design; use arrow keys or the mouse to select a command.
+- **"You switched notes while generating, so the result was discarded."** — a generation's
+  output only ever goes into the note it was started from. If you open a different note while it's
+  still running, the result is dropped rather than inserted into the wrong note; switch back and
+  run the command again.

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Extension, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
 import { basicSetup } from "codemirror";
@@ -44,31 +43,33 @@ export default function Editor({ value, onChange, theme, editorRef }: EditorProp
   // across remounts (e.g. React StrictMode's double-invoked effects in dev) left the dark theme
   // partially applied. A clean remount trades preserving scroll/cursor position across a theme
   // toggle — a rare, deliberate action — for guaranteed-correct styling every time.
+  const extensionsRef = useRef<Extension[]>([]);
+
   useEffect(() => {
     if (!hostRef.current) return;
-    const state = EditorState.create({
-      doc: value,
-      extensions: [
-        basicSetup,
-        history(),
+    const extensions: Extension[] = [
+      // Prec.high: basicSetup's own defaultKeymap binds Mod-i to selectParentSyntax and would
+      // otherwise win (earlier extensions take precedence), silently swallowing Ctrl+I.
+      Prec.high(
         keymap.of([
           { key: "Mod-b", run: (v) => { wrapSelection(v, "**", "**"); return true; } },
           { key: "Mod-i", run: (v) => { wrapSelection(v, "*", "*"); return true; } },
-          { key: "Mod-e", run: (v) => { wrapSelection(v, "`", "`"); return true; } },
-          ...defaultKeymap,
-          ...historyKeymap
-        ]),
-        markdown({ extensions: GFM }),
-        lonelogHighlight(),
-        theme === "dark" ? oneDark : lightEditorTheme,
-        EditorView.lineWrapping,
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            onChangeRef.current(update.state.doc.toString());
-          }
-        })
-      ]
-    });
+          { key: "Mod-e", run: (v) => { wrapSelection(v, "`", "`"); return true; } }
+        ])
+      ),
+      basicSetup,
+      markdown({ extensions: GFM }),
+      lonelogHighlight(),
+      theme === "dark" ? oneDark : lightEditorTheme,
+      EditorView.lineWrapping,
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          onChangeRef.current(update.state.doc.toString());
+        }
+      })
+    ];
+    extensionsRef.current = extensions;
+    const state = EditorState.create({ doc: value, extensions });
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
     if (editorRef) editorRef.current = view;
@@ -85,7 +86,11 @@ export default function Editor({ value, onChange, theme, editorRef }: EditorProp
     if (!view) return;
     const current = view.state.doc.toString();
     if (current !== value) {
-      view.dispatch({ changes: { from: 0, to: current.length, insert: value } });
+      // An external value change (switching notes, restoring a snapshot) swaps in a fresh state
+      // rather than dispatching a replace: a dispatched replace would land in the undo history
+      // (Ctrl+Z would then pull the *previous* note's text into this one, and autosave would
+      // persist it) and would also fire onChange, spuriously re-saving a note just by opening it.
+      view.setState(EditorState.create({ doc: value, extensions: extensionsRef.current }));
     }
   }, [value]);
 

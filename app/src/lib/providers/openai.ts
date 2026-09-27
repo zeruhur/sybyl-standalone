@@ -6,6 +6,8 @@ import {
 } from "../types";
 import { AIProvider, truncateSourceText } from "./base";
 
+const OPENAI_SOURCE_CHAR_LIMIT = 200_000;
+
 export class OpenAIProvider implements AIProvider {
   readonly id = "openai";
   readonly name = "OpenAI";
@@ -16,13 +18,20 @@ export class OpenAIProvider implements AIProvider {
     this.ensureConfigured();
     const baseUrl = this.config.baseUrl.replace(/\/$/, "");
     const model = request.model || this.config.defaultModel;
+    // OpenAI-hosted models have large context windows, so sources get a far bigger budget than
+    // Ollama's (whose default context is only a few thousand tokens) — at the old shared 4000-char
+    // cap, Digest Source only ever saw the first page or two of a rulebook.
     const sourceBlocks = (request.resolvedSources ?? [])
       .filter((source) => source.textContent)
-      .map((source) => `[SOURCE: ${source.ref.label}]\n${truncateSourceText(source.textContent ?? "")}\n[END SOURCE]`);
+      .map((source) => `[SOURCE: ${source.ref.label}]\n${truncateSourceText(source.textContent ?? "", OPENAI_SOURCE_CHAR_LIMIT)}\n[END SOURCE]`);
 
+    // Reasoning models (gpt-5*, o1/o3/o4*) reject `max_tokens` and any non-default temperature;
+    // they take `max_completion_tokens` instead. Other models (and most OpenAI-compatible
+    // third-party endpoints behind a custom baseUrl) still expect `max_tokens`.
+    const isReasoningModel = /^(gpt-5|o\d)/.test(model);
     const body: Record<string, unknown> = {
       model,
-      max_tokens: request.maxOutputTokens,
+      [isReasoningModel ? "max_completion_tokens" : "max_tokens"]: request.maxOutputTokens,
       messages: [
         { role: "system", content: request.systemPrompt },
         {
@@ -39,7 +48,7 @@ export class OpenAIProvider implements AIProvider {
       ]
     };
 
-    if (!model.startsWith("gpt-5")) {
+    if (!isReasoningModel) {
       body.temperature = request.temperature;
     }
 

@@ -18,12 +18,17 @@ export const DEFAULT_SETTINGS: SybylSettings = {
 
 export function normalizeSettings(data: unknown): SybylSettings {
   const partial = (data ?? {}) as Partial<SybylSettings>;
+  const saved: Partial<SybylSettings["providers"]> = partial.providers ?? {};
+  // Merged per provider, not just per key: a stored provider config missing a field (e.g. one
+  // saved before that field existed) would otherwise replace the whole default and drop it.
   return {
     ...DEFAULT_SETTINGS,
     ...partial,
     providers: {
-      ...DEFAULT_SETTINGS.providers,
-      ...(partial.providers ?? {})
+      gemini: { ...DEFAULT_SETTINGS.providers.gemini, ...saved.gemini },
+      openai: { ...DEFAULT_SETTINGS.providers.openai, ...saved.openai },
+      anthropic: { ...DEFAULT_SETTINGS.providers.anthropic, ...saved.anthropic },
+      ollama: { ...DEFAULT_SETTINGS.providers.ollama, ...saved.ollama }
     }
   };
 }
