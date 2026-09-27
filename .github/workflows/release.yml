@@ -141,8 +141,12 @@ jobs:
           distribution: zulu
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses
+        # Uses the Android SDK preinstalled on the runner image ($ANDROID_HOME) instead of
+        # android-actions/setup-android@v3, which started failing once it swapped in cmdline-tools
+        # 16.0: its license step left "Accept? (y/N)" prompts unanswered and exited 1.
+        # `yes || true` keeps pipefail from failing the step when `yes` gets SIGPIPE.
+        run: (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
 
       - name: Set up Android NDK
         id: ndk
