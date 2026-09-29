@@ -1,9 +1,10 @@
-import { useCallback, useRef, useState } from "react";
+import { Ref, useCallback, useRef, useState } from "react";
 import {
   Bold, Code, Ellipsis, Superscript, Image, Italic, Link, List, ListChecks, ListOrdered, Minus, Quote,
   SquareCode, Strikethrough, Table
 } from "lucide-react";
 import { useDismiss } from "./useDismiss";
+import HeadingPicker, { HeadingPickerHandle } from "./HeadingPicker";
 
 interface FormatToolbarProps {
   onBold: () => void;
@@ -12,6 +13,8 @@ interface FormatToolbarProps {
   onCode: () => void;
   onCodeBlock: () => void;
   onHeading: (level: number) => void;
+  getHeadingLevel: () => number;
+  headingPickerRef?: Ref<HeadingPickerHandle>;
   onBlockquote: () => void;
   onBulletList: () => void;
   onNumberedList: () => void;
@@ -30,6 +33,8 @@ export default function FormatToolbar({
   onCode,
   onCodeBlock,
   onHeading,
+  getHeadingLevel,
+  headingPickerRef,
   onBlockquote,
   onBulletList,
   onNumberedList,
@@ -56,24 +61,7 @@ export default function FormatToolbar({
       <button className="format-button" onClick={onBold} title="Bold (Ctrl+B)"><Bold size={15} /></button>
       <button className="format-button" onClick={onItalic} title="Italic (Ctrl+I)"><Italic size={15} /></button>
       <button className="format-button" onClick={onCode} title="Code (Ctrl+E)"><Code size={15} /></button>
-      <select
-        className="format-heading-select"
-        value=""
-        onChange={(e) => {
-          const level = Number(e.currentTarget.value);
-          if (level) onHeading(level);
-          e.currentTarget.value = "";
-        }}
-        title="Heading level"
-      >
-        <option value="" disabled>H</option>
-        <option value="1">Heading 1</option>
-        <option value="2">Heading 2</option>
-        <option value="3">Heading 3</option>
-        <option value="4">Heading 4</option>
-        <option value="5">Heading 5</option>
-        <option value="6">Heading 6</option>
-      </select>
+      <HeadingPicker ref={headingPickerRef} getLevel={getHeadingLevel} onSetLevel={onHeading} />
       <button className="format-button" onClick={onLink} title="Link"><Link size={15} /></button>
       <span className="format-divider" />
       <div className="format-more" ref={menuRef}>

@@ -74,7 +74,12 @@ Strikethrough, Code and Link. The full **formatting toolbar** is hidden by defau
 button next to the note title shows or hides it (the choice is remembered). It has five buttons
 inline (Bold, Italic, Code, Heading, Link) plus a **More** popover for the rest (Strikethrough,
 Code block, Blockquote, Bullet list, Numbered list, Task list, Image, Table, Horizontal rule,
-Footnote). Only Bold/Italic/Code have keyboard shortcuts (Ctrl+B/I/E).
+Footnote). The **Heading** button shows the current line's level and opens a row of level chips:
+**¶** for plain text, then **H1**–**H6**. Picking the level the line already has removes it.
+
+Keyboard shortcuts: Ctrl+B/I/E for Bold/Italic/Code, **Ctrl+1**–**Ctrl+6** to set a heading level
+(pressing the current level again removes it), and **Ctrl+0** to turn the line back into plain
+text. They work whether or not the toolbar is showing.
 
 **The note menu.** Click the note's title in the header for everything that acts on the note as
 a whole: **Edit campaign info**, **Save snapshot**, **Version history**, **Export…** and
@@ -292,6 +297,8 @@ Sybyl runs on Android with a few differences from desktop:
 | Ctrl+B | Bold selection |
 | Ctrl+I | Italic selection |
 | Ctrl+E | Code selection |
+| Ctrl+1 – Ctrl+6 | Set the line's heading level (again to remove it) |
+| Ctrl+0 | Turn the line back into plain text |
 
 ## Troubleshooting
 

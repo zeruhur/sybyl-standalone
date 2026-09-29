@@ -601,10 +601,27 @@ html, body, #root {
   min-width: 30px;
 }
 
-.format-heading-select {
-  padding: 4px 6px;
-  font-size: 13px;
-  width: auto;
+.format-button.active {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+/* Heading picker: the level chips sit in one row instead of a list. */
+.popover-menu.popover-row {
+  flex-direction: row;
+  min-width: 0;
+  gap: 2px;
+}
+.popover-menu.popover-row button {
+  padding: 6px;
+  color: var(--text-dim);
+}
+.popover-menu.popover-row button:hover {
+  color: var(--text);
+}
+.popover-menu.popover-row button.active {
+  color: var(--accent);
+  background: var(--bg-elevated);
 }
 
 .format-divider {

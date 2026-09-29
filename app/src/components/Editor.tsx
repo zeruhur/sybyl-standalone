@@ -6,7 +6,7 @@ import { GFM } from "@lezer/markdown";
 import { basicSetup } from "codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { lonelogHighlight } from "../lib/lonelogHighlight";
-import { wrapSelection } from "../lib/editorUtils";
+import { setHeadingLevel, wrapSelection } from "../lib/editorUtils";
 
 interface EditorProps {
   value: string;
@@ -59,7 +59,12 @@ export default function Editor({ value, onChange, theme, editorRef, onSelectionC
         keymap.of([
           { key: "Mod-b", run: (v) => { wrapSelection(v, "**", "**"); return true; } },
           { key: "Mod-i", run: (v) => { wrapSelection(v, "*", "*"); return true; } },
-          { key: "Mod-e", run: (v) => { wrapSelection(v, "`", "`"); return true; } }
+          { key: "Mod-e", run: (v) => { wrapSelection(v, "`", "`"); return true; } },
+          // Ctrl+1-6 set (or toggle off) that heading level, Ctrl+0 returns the line to plain text.
+          ...[0, 1, 2, 3, 4, 5, 6].map((level) => ({
+            key: `Mod-${level}`,
+            run: (v: EditorView) => { setHeadingLevel(v, level); return true; }
+          }))
         ])
       ),
       basicSetup,

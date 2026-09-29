@@ -22,6 +22,7 @@ import SideDrawer, { DrawerTab } from "./components/SideDrawer";
 import NoteMenu from "./components/NoteMenu";
 import SelectionBubble, { SelectionBubbleHandle } from "./components/SelectionBubble";
 import StatusToast from "./components/StatusToast";
+import { HeadingPickerHandle } from "./components/HeadingPicker";
 import { BookOpen, CaseSensitive, Command, Dices, Ellipsis, Info, LayoutDashboard, Menu, Moon, Search, Settings, Sun } from "lucide-react";
 import { ComposerIntent } from "./lib/composer";
 import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
@@ -58,7 +59,7 @@ import {
   formatSuggestConsequence,
   LonelogFormatOptions
 } from "./lib/lonelog/formatter";
-import { appendToNote, getSelection, insertAtCursor, insertBelowSelection, insertFootnote, InsertedRange, isInsideCodeBlock, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
+import { appendToNote, getHeadingLevel, getSelection, insertAtCursor, insertBelowSelection, insertFootnote, InsertedRange, isInsideCodeBlock, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
 import "./App.css";
 
 const NEW_NOTE_FIELDS: PromptField[] = [
@@ -194,6 +195,7 @@ export default function App() {
   const editorViewRef = useRef<EditorView | null>(null);
   const composerRef = useRef<PlayComposerHandle | null>(null);
   const bubbleRef = useRef<SelectionBubbleHandle | null>(null);
+  const headingPickerRef = useRef<HeadingPickerHandle | null>(null);
   const bubbleFrame = useRef<number | undefined>(undefined);
   const saveTimer = useRef<number | undefined>(undefined);
   const pendingSaveRef = useRef<{ file: VaultFile; body: string } | null>(null);
@@ -440,6 +442,11 @@ export default function App() {
     if (view) setHeadingLevel(view, level);
   }
 
+  function currentHeadingLevel(): number {
+    const view = editorViewRef.current;
+    return view ? getHeadingLevel(view) : 0;
+  }
+
   function formatLink() {
     const view = editorViewRef.current;
     if (!view) return;
@@ -542,6 +549,7 @@ export default function App() {
     bubbleFrame.current = requestAnimationFrame(() => {
       bubbleFrame.current = undefined;
       bubbleRef.current?.update();
+      headingPickerRef.current?.sync();
     });
   }
 
@@ -1554,6 +1562,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
                     onCode={formatCode}
                     onCodeBlock={formatCodeBlock}
                     onHeading={formatHeading}
+                    getHeadingLevel={currentHeadingLevel}
+                    headingPickerRef={headingPickerRef}
                     onBlockquote={formatBlockquote}
                     onBulletList={formatBulletList}
                     onNumberedList={formatNumberedList}
