@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronDown, ChevronRight, FileUp, Plus, X } from "lucide-react";
 import { isAndroid } from "../lib/vault";
 import { VaultFile } from "../lib/types";
 
@@ -9,9 +10,6 @@ interface SidebarProps {
   onChangeVault: () => void;
   onNewNote: () => void;
   onImportNote: () => void;
-  onExportNote: () => void;
-  onSaveSnapshot: () => void;
-  onVersionHistory: () => void;
   onDeleteNote: (file: VaultFile) => void;
   vaultPath: string | null;
   version: string;
@@ -45,7 +43,7 @@ function FileRow({
           onDelete();
         }}
       >
-        ×
+        <X size={14} />
       </button>
     </div>
   );
@@ -66,7 +64,7 @@ function AccordionSection({
   return (
     <div className="sidebar-section">
       <button className="sidebar-section-toggle" onClick={() => setOpen((v) => !v)}>
-        <span>{open ? "▾" : "▸"}</span>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <span>{title}</span>
         <span className="sidebar-section-count">{count}</span>
       </button>
@@ -82,9 +80,6 @@ export default function Sidebar({
   onChangeVault,
   onNewNote,
   onImportNote,
-  onExportNote,
-  onSaveSnapshot,
-  onVersionHistory,
   onDeleteNote,
   vaultPath,
   version,
@@ -101,16 +96,12 @@ export default function Sidebar({
         <div className="sidebar-header">
           <span className="vault-path" title={vaultPath ?? ""}>{vaultPath ? vaultPath.split(/[\\/]/).pop() : "No vault"}</span>
           {!isAndroid() && <button className="link-button" onClick={onChangeVault}>Change vault</button>}
-          <button className="sidebar-close" onClick={onClose} title="Close sidebar">×</button>
+          <button className="sidebar-close" onClick={onClose} title="Close sidebar"><X size={16} /></button>
         </div>
+      {/* Vault-level actions only; actions on the open note live in the header's note menu. */}
       <div className="sidebar-note-actions">
-        <button className="new-note-button" disabled={!vaultPath} onClick={onNewNote}>+ New Note</button>
-        <button className="import-note-button" disabled={!vaultPath} onClick={onImportNote} title="Import Note">Import</button>
-        <button className="export-note-button" disabled={!activePath} onClick={onExportNote} title="Export Note">Export</button>
-      </div>
-      <div className="sidebar-note-actions">
-        <button disabled={!activePath} onClick={onSaveSnapshot} title="Save a snapshot of this note's current state">Snapshot</button>
-        <button disabled={!activePath} onClick={onVersionHistory} title="View and restore previous snapshots of this note">History</button>
+        <button className="new-note-button" disabled={!vaultPath} onClick={onNewNote}><Plus size={15} /> New Note</button>
+        <button className="import-note-button" disabled={!vaultPath} onClick={onImportNote} title="Import a .md file into the vault"><FileUp size={15} /> Import</button>
       </div>
 
       <AccordionSection title="Campaigns" count={campaigns.length} emptyMessage="No campaigns yet.">

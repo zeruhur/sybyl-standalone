@@ -8,6 +8,11 @@
   --accent: #8b7cf6;
   --accent-dim: #5a4fb0;
   --danger: #e26060;
+  --lonelog-scene: #e8b04b;
+  --beat-question: #e0c56f;
+  --beat-result: #7fd88f;
+  --beat-consequence: #6fb8e0;
+  --beat-roll: #e08f6f;
 
   font-family: "Iowan Old Style", "Georgia", "Segoe UI", system-ui, sans-serif;
   color: var(--text);
@@ -29,6 +34,11 @@
   --accent: #6d4fd1;
   --accent-dim: #5a3fc0;
   --danger: #c0392b;
+  --lonelog-scene: #a5690a;
+  --beat-question: #8a6d10;
+  --beat-result: #2f8f4e;
+  --beat-consequence: #1f6fa5;
+  --beat-roll: #a1451f;
 }
 
 /* The Lonelog syntax-highlight palette below is tuned pastel-bright for the dark editor
@@ -140,13 +150,8 @@ html, body, #root {
   border-color: transparent;
 }
 
-.import-note-button,
-.export-note-button {
+.import-note-button {
   flex-shrink: 0;
-}
-
-.sidebar-note-actions + .sidebar-note-actions button {
-  flex: 1;
 }
 
 .sidebar-section {
@@ -282,8 +287,6 @@ html, body, #root {
 
 .sidebar-toggle {
   display: none;
-  font-size: 16px;
-  padding: 4px 8px;
 }
 
 .command-menu-toggle {
@@ -302,9 +305,75 @@ html, body, #root {
   display: none;
 }
 
-.theme-toggle {
+/* Square, borderless-until-hover button holding a single icon. */
+.icon-button {
+  padding: 6px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.icon-button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-panel);
+  border-color: var(--border);
+}
+.icon-button.active {
+  color: var(--accent);
+}
+
+/* Text shown beside an icon-only button only inside the narrow-viewport ⋯ menu. */
+.menu-only-label {
+  display: none;
+}
+
+.command-bar-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+/* Header: the note title doubles as the menu for note-level actions. */
+.note-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.note-menu {
+  position: relative;
+  min-width: 0;
+}
+
+.note-menu-toggle {
+  max-width: 100%;
+  background: transparent;
+  border-color: transparent;
   font-size: 15px;
-  padding: 4px 10px;
+  font-weight: 600;
+  padding: 5px 8px;
+  color: var(--text);
+}
+.note-menu-toggle:hover:not(:disabled) {
+  background: var(--bg-panel);
+  border-color: var(--border);
+}
+
+.note-menu-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-divider {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+.popover-menu .popover-danger {
+  color: var(--danger);
 }
 
 .campaign-info-panel {
@@ -549,7 +618,7 @@ html, body, #root {
   position: relative;
 }
 
-.format-more-menu {
+.popover-menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -564,7 +633,7 @@ html, body, #root {
   padding: 4px;
 }
 
-.format-more-menu button {
+.popover-menu button {
   justify-content: flex-start;
   text-align: left;
   background: transparent;
@@ -574,7 +643,7 @@ html, body, #root {
   border-radius: 4px;
 }
 
-.format-more-menu button:hover {
+.popover-menu button:hover {
   background: var(--bg-elevated);
 }
 
@@ -591,16 +660,59 @@ html, body, #root {
   margin-left: auto;
 }
 
-.status-bar {
-  padding: 6px 20px;
-  font-size: 12px;
-  color: var(--accent);
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
+/* Floating status message, top-right of the editor column. Takes no layout space. */
+.status-toast {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 15;
+  max-width: min(520px, calc(100% - 32px));
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  padding: 8px 8px 8px 12px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+.status-toast-error {
+  border-left-color: var(--danger);
+}
+
+.status-toast-message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.status-toast-close {
+  padding: 2px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+
+.status-spinner {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: status-spin 0.8s linear infinite;
+}
+
+@keyframes status-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-spinner { animation: none; }
 }
 
 .cancel-button {
@@ -705,6 +817,10 @@ html, body, #root {
 
 /* Buttons / inputs */
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-radius: 6px;
   border: 1px solid var(--border);
   padding: 7px 14px;
@@ -1084,6 +1200,7 @@ input:focus, select:focus {
 }
 
 .editor-column {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1301,5 +1418,74 @@ input:focus, select:focus {
 
   .play-composer-input {
     font-size: 16px; /* below 16px, mobile browsers zoom the page on focus */
+  }
+}
+
+/* Formatting bubble floating over a non-empty editor selection. */
+.selection-bubble {
+  position: absolute;
+  z-index: 16;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+.selection-bubble[hidden] {
+  display: none;
+}
+.selection-bubble button {
+  padding: 6px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.selection-bubble button:hover {
+  color: var(--text);
+  background: var(--bg-elevated);
+}
+
+/* Whole-line Lonelog treatment (lonelogHighlight.ts's lineClassPlugin). */
+.editor-host .cm-lonelog-line-scene {
+  padding-top: 0.9em;
+  font-size: 1.08em;
+  border-bottom: 1px solid var(--border);
+}
+.editor-host .cm-lonelog-line {
+  border-left: 2px solid transparent;
+  padding-left: 10px;
+}
+.editor-host .cm-lonelog-line-action { border-left-color: var(--accent); }
+.editor-host .cm-lonelog-line-question { border-left-color: var(--beat-question); }
+.editor-host .cm-lonelog-line-result { border-left-color: var(--beat-result); }
+.editor-host .cm-lonelog-line-consequence { border-left-color: var(--beat-consequence); }
+.editor-host .cm-lonelog-line-roll { border-left-color: var(--beat-roll); }
+
+@media (max-width: 720px) {
+  .note-header {
+    order: 3;
+    flex: 1 1 100%;
+  }
+
+  .command-bar-divider {
+    display: none;
+  }
+
+  .command-bar-actions-open .menu-only-label {
+    display: inline;
+  }
+
+  .command-bar-actions-open .icon-button {
+    color: var(--text);
+    background: var(--bg-panel);
+    border-color: var(--border);
+  }
+
+  .status-toast {
+    left: 12px;
+    right: 12px;
+    max-width: none;
   }
 }

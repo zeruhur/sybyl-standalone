@@ -19,6 +19,10 @@ import VersionHistoryModal from "./components/VersionHistoryModal";
 import UserGuideModal from "./components/UserGuideModal";
 import PlayComposer, { PlayComposerHandle } from "./components/PlayComposer";
 import SideDrawer, { DrawerTab } from "./components/SideDrawer";
+import NoteMenu from "./components/NoteMenu";
+import SelectionBubble, { SelectionBubbleHandle } from "./components/SelectionBubble";
+import StatusToast from "./components/StatusToast";
+import { BookOpen, CaseSensitive, Command, Dices, Ellipsis, Info, LayoutDashboard, Menu, Moon, Search, Settings, Sun } from "lucide-react";
 import { ComposerIntent } from "./lib/composer";
 import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
 import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
@@ -189,6 +193,8 @@ export default function App() {
 
   const editorViewRef = useRef<EditorView | null>(null);
   const composerRef = useRef<PlayComposerHandle | null>(null);
+  const bubbleRef = useRef<SelectionBubbleHandle | null>(null);
+  const bubbleFrame = useRef<number | undefined>(undefined);
   const saveTimer = useRef<number | undefined>(undefined);
   const pendingSaveRef = useRef<{ file: VaultFile; body: string } | null>(null);
   const statusTimer = useRef<number | undefined>(undefined);
@@ -525,6 +531,20 @@ export default function App() {
     );
   }
 
+  function toggleFormatToolbar() {
+    saveSettings({ ...settings, showFormatToolbar: !settings.showFormatToolbar });
+  }
+
+  /** Deferred a frame: CodeMirror calls this from inside its update cycle, where reading layout
+   * (coordsAtPos) isn't allowed, and a burst of scroll events only needs one reposition. */
+  function scheduleBubbleUpdate() {
+    if (bubbleFrame.current !== undefined) return;
+    bubbleFrame.current = requestAnimationFrame(() => {
+      bubbleFrame.current = undefined;
+      bubbleRef.current?.update();
+    });
+  }
+
   function toggleTheme() {
     saveSettings({ ...settings, theme: settings.theme === "dark" ? "light" : "dark" });
   }
@@ -588,6 +608,11 @@ export default function App() {
   function showStatus(text: string) {
     window.clearTimeout(statusTimer.current);
     setStatus(text);
+  }
+
+  function dismissStatus() {
+    window.clearTimeout(statusTimer.current);
+    setStatus("");
   }
 
   function flashStatus(text: string, ms = 4000) {
@@ -1399,9 +1424,6 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         onChangeVault={handleChangeVault}
         onNewNote={() => setNewNoteOpen(true)}
         onImportNote={runImportNote}
-        onExportNote={cmdExportNote}
-        onSaveSnapshot={cmdSaveSnapshot}
-        onVersionHistory={cmdVersionHistory}
         onDeleteNote={setDeleteTarget}
         vaultPath={vaultPath}
         version={version}
@@ -1410,44 +1432,61 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
       />
       <main className="main-pane">
         <div className="command-bar">
-          <button className="sidebar-toggle" onClick={() => setSidebarOpen((v) => !v)} title="Toggle vault sidebar">
-            ☰
+          <button className="sidebar-toggle icon-button" onClick={() => setSidebarOpen((v) => !v)} title="Toggle vault sidebar">
+            <Menu size={18} />
           </button>
-          <span className="active-file-name">{activeFile ? activeFile.name : "No file open"}</span>
+          {activeFile ? (
+            <div className="note-header">
+              <NoteMenu
+                title={activeFile.fm.pc_name || activeFile.name.replace(/\.md$/i, "")}
+                onEditInfo={cmdEditCampaignInfo}
+                onSaveSnapshot={cmdSaveSnapshot}
+                onVersionHistory={cmdVersionHistory}
+                onExport={cmdExportNote}
+                onDelete={() => setDeleteTarget(activeFile)}
+              />
+              <button
+                className={`icon-button${settings.showFormatToolbar ? " active" : ""}`}
+                onClick={toggleFormatToolbar}
+                title={settings.showFormatToolbar ? "Hide the formatting toolbar" : "Show the formatting toolbar"}
+                aria-pressed={settings.showFormatToolbar}
+              >
+                <CaseSensitive size={18} />
+              </button>
+            </div>
+          ) : (
+            <span className="active-file-name">No note open</span>
+          )}
           <button
-            className="command-menu-toggle"
+            className="command-menu-toggle icon-button"
             onClick={() => setCommandMenuOpen((v) => !v)}
             title="More actions"
           >
-            ⋯
+            <Ellipsis size={18} />
           </button>
           <div className={`command-bar-actions${commandMenuOpen ? " command-bar-actions-open" : ""}`}>
             <button
-              className="theme-toggle"
-              onClick={() => { toggleTheme(); setCommandMenuOpen(false); }}
-              title={settings.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            >
-              {settings.theme === "dark" ? "☀" : "☾"}
-            </button>
-            <button
               disabled={!vaultPath}
               onClick={() => { setSwitcherOpen(true); setCommandMenuOpen(false); }}
-              title="Search notes by name or content"
+              title="Search notes by name or content (Ctrl+O)"
             >
-              Search <span className="kbd-hint">Ctrl+O</span>
+              <Search size={15} /> Search
             </button>
             <button
               disabled={!activeFile || loading}
               onClick={() => { setPaletteOpen(true); setCommandMenuOpen(false); }}
+              title="All commands (Ctrl+K)"
             >
-              Commands <span className="kbd-hint">Ctrl+K</span>
+              <Command size={15} /> Commands
             </button>
+            <span className="command-bar-divider" />
             <button
               disabled={!vaultPath}
               className={drawerOpen && drawerTab === "toolkit" ? "active" : undefined}
               onClick={() => { toggleDrawer("toolkit"); setCommandMenuOpen(false); }}
+              title="Dice, oracle, cards, tables and other offline tools"
             >
-              Toolkit
+              <Dices size={15} /> Toolkit
             </button>
             <button
               disabled={!activeFile}
@@ -1455,7 +1494,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
               onClick={() => { toggleDrawer("dashboard"); setCommandMenuOpen(false); }}
               title="Open threads, clocks, and tracks for this campaign"
             >
-              Dashboard
+              <LayoutDashboard size={15} /> Dashboard
             </button>
             <button
               disabled={!activeFile}
@@ -1463,49 +1502,85 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
               onClick={() => { toggleDrawer("info"); setCommandMenuOpen(false); }}
               title="Campaign info for this note"
             >
-              Info
+              <Info size={15} /> Info
             </button>
-            <button onClick={() => { setSettingsOpen(true); setCommandMenuOpen(false); }}>Settings</button>
-            <button onClick={() => { setUserGuideOpen(true); setCommandMenuOpen(false); }} title="Open the User Guide">
-              Help
+            <span className="command-bar-divider" />
+            <button
+              className="icon-button"
+              onClick={() => { toggleTheme(); setCommandMenuOpen(false); }}
+              title={settings.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-label="Toggle theme"
+            >
+              {settings.theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+              <span className="menu-only-label">{settings.theme === "dark" ? "Light theme" : "Dark theme"}</span>
+            </button>
+            <button
+              className="icon-button"
+              onClick={() => { setSettingsOpen(true); setCommandMenuOpen(false); }}
+              title="Settings"
+              aria-label="Settings"
+            >
+              <Settings size={17} />
+              <span className="menu-only-label">Settings</span>
+            </button>
+            <button
+              className="icon-button"
+              onClick={() => { setUserGuideOpen(true); setCommandMenuOpen(false); }}
+              title="User Guide"
+              aria-label="User Guide"
+            >
+              <BookOpen size={17} />
+              <span className="menu-only-label">User Guide</span>
             </button>
           </div>
         </div>
-        {status && (
-          <div className="status-bar">
-            <span>{status}</span>
-            {loading && (
-              <button className="cancel-button" onClick={cancelGeneration}>Cancel</button>
-            )}
-            {!loading && lastGeneration && lastGeneration.filePath === activeFile?.path && (
-              <button className="regenerate-button" onClick={regenerateLast} title="Re-run the last generation and replace its output">
-                Regenerate
-              </button>
-            )}
-          </div>
-        )}
         <div className="workspace">
           <div className="editor-column">
+            <StatusToast
+              message={status}
+              loading={loading}
+              canRegenerate={!!lastGeneration && lastGeneration.filePath === activeFile?.path}
+              onCancel={cancelGeneration}
+              onRegenerate={regenerateLast}
+              onDismiss={dismissStatus}
+            />
             {activeFile ? (
               <>
-                <FormatToolbar
+                {settings.showFormatToolbar && (
+                  <FormatToolbar
+                    onBold={formatBold}
+                    onItalic={formatItalic}
+                    onStrikethrough={formatStrikethrough}
+                    onCode={formatCode}
+                    onCodeBlock={formatCodeBlock}
+                    onHeading={formatHeading}
+                    onBlockquote={formatBlockquote}
+                    onBulletList={formatBulletList}
+                    onNumberedList={formatNumberedList}
+                    onTaskList={formatTaskList}
+                    onLink={formatLink}
+                    onImage={formatImage}
+                    onTable={formatTable}
+                    onHorizontalRule={formatHorizontalRule}
+                    onFootnote={formatFootnote}
+                  />
+                )}
+                <Editor
+                  value={body}
+                  onChange={handleBodyChange}
+                  theme={settings.theme}
+                  editorRef={editorViewRef}
+                  onSelectionChange={scheduleBubbleUpdate}
+                />
+                <SelectionBubble
+                  ref={bubbleRef}
+                  getView={() => editorViewRef.current}
                   onBold={formatBold}
                   onItalic={formatItalic}
                   onStrikethrough={formatStrikethrough}
                   onCode={formatCode}
-                  onCodeBlock={formatCodeBlock}
-                  onHeading={formatHeading}
-                  onBlockquote={formatBlockquote}
-                  onBulletList={formatBulletList}
-                  onNumberedList={formatNumberedList}
-                  onTaskList={formatTaskList}
                   onLink={formatLink}
-                  onImage={formatImage}
-                  onTable={formatTable}
-                  onHorizontalRule={formatHorizontalRule}
-                  onFootnote={formatFootnote}
                 />
-                <Editor value={body} onChange={handleBodyChange} theme={settings.theme} editorRef={editorViewRef} />
                 <PlayComposer
                   ref={composerRef}
                   disabled={!activeFile}

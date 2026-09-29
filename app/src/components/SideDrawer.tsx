@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { X } from "lucide-react";
 
 export type DrawerTab = "toolkit" | "dashboard" | "info";
 
@@ -39,7 +40,7 @@ export default function SideDrawer({ open, tab, panes, onTabChange, onClose }: S
               {pane.label}
             </button>
           ))}
-          <button className="drawer-close" onClick={onClose} title="Close panel">×</button>
+          <button className="drawer-close" onClick={onClose} title="Close panel"><X size={16} /></button>
         </div>
         <div className="drawer-body">
           {panes.map((pane) =>

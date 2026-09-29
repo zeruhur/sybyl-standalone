@@ -36,7 +36,7 @@ AI provider when running a command.
 1. Pick or create a folder for your vault.
 2. Click **+ New Note** in the sidebar, fill in whatever campaign fields you know (all optional
    except type), and save.
-3. Open **Settings** and add an API key for at least one provider (see
+3. Open **Settings** (the gear icon, top right) and add an API key for at least one provider (see
    [Settings and providers](#settings-and-providers)) if you want AI-backed commands. Everything
    under [The Toolkit](#the-toolkit) works with no API key at all.
 
@@ -65,12 +65,20 @@ You don't have to write Lonelog by hand — most commands insert correctly-tagge
 
 The main pane is a CodeMirror editor with full GFM support (tables, task lists, strikethrough,
 autolinks) plus Lonelog-aware syntax highlighting for scene headers, tags, and dice/card notation
-on `d:` lines. Changes autosave about half a second after you stop typing.
+on `d:` lines. Scene headers get a heading treatment and each beat line (`@`, `?`, `d:`, `->`,
+`=>`) a colored rule down its left edge, so a long log is easy to scan. Changes autosave about half
+a second after you stop typing.
 
-The **formatting toolbar** above the editor has five buttons inline (Bold, Italic, Code, Heading,
-Link) plus a **More ⋯** popover for the rest (Strikethrough, Code block, Blockquote, Bullet list,
-Numbered list, Task list, Image, Table, Horizontal rule, Footnote). Only Bold/Italic/Code have
-keyboard shortcuts (Ctrl+B/I/E) — everything else is toolbar-only.
+**Formatting.** Select some text and a small bubble appears above it with Bold, Italic,
+Strikethrough, Code and Link. The full **formatting toolbar** is hidden by default; the **Aa**
+button next to the note title shows or hides it (the choice is remembered). It has five buttons
+inline (Bold, Italic, Code, Heading, Link) plus a **More** popover for the rest (Strikethrough,
+Code block, Blockquote, Bullet list, Numbered list, Task list, Image, Table, Horizontal rule,
+Footnote). Only Bold/Italic/Code have keyboard shortcuts (Ctrl+B/I/E).
+
+**The note menu.** Click the note's title in the header for everything that acts on the note as
+a whole: **Edit campaign info**, **Save snapshot**, **Version history**, **Export…** and
+**Delete note…**. The sidebar only holds vault-level actions (New Note, Import, Change vault).
 
 ## Playing: the composer
 
@@ -130,8 +138,8 @@ scrolls out of view.
 
 Two independent safety nets protect a note beyond CodeMirror's in-session undo:
 
-- **Snapshot** (sidebar button) — saves the note's current state on demand.
-- **History** (sidebar button) — opens a list of every saved snapshot for the current note,
+- **Save snapshot** (note menu) — saves the note's current state on demand.
+- **Version history** (note menu) — opens a list of every saved snapshot for the current note,
   newest first, each with a **Restore** button.
 
 Sybyl also snapshots a note automatically when you open it, throttled to at most once every 10
@@ -175,7 +183,7 @@ Structural / non-AI commands:
 | Add Source File | Attaches a PDF/text/markdown source to the note |
 | Manage Sources | Lists and removes attached sources |
 
-Every AI-backed command can be **cancelled** mid-flight (Cancel button in the status bar) and the
+Every AI-backed command can be **cancelled** mid-flight (the Cancel button in the status message at the top right of the editor) and the
 most recent one can be **regenerated** — re-run with the identical request, swapping its output
 in place — as long as the note hasn't changed at that spot since.
 
@@ -183,8 +191,8 @@ in place — as long as the note hasn't changed at that spot since.
 re-reading a raw file: run **Digest Source into Game Context** once per source, and every
 subsequent request reuses that instead of re-uploading the file.
 
-**Import Note**, **Export Note**, **Save Snapshot**, and **Version History** live in the sidebar,
-not the command palette, since they aren't about generating text into the current cursor
+**Import Note** lives in the sidebar, and **Export**, **Save snapshot** and **Version history**
+in the [note menu](#the-editor), not the command palette, since they aren't about generating text into the current cursor
 position. The **Toolkit**, **Dashboard** and **Info** panels live in the
 [side panel](#the-side-panel) for the same reason. The most common play commands are also one
 keystroke away in the [composer](#playing-the-composer).
@@ -254,13 +262,13 @@ in-app editor doesn't show frontmatter.
 
 ## Import and export
 
-**Import Note** (sidebar) copies an external `.md` file into the vault as a new note. **Export
-Note** (sidebar, needs an active note) writes the current note out to any location you pick,
+**Import** (sidebar) copies an external `.md` file into the vault as a new note. **Export…**
+(note menu) writes the current note out to any location you pick,
 frontmatter included.
 
 ## Themes
 
-The sun/moon button in the command bar toggles between dark and light. Both keep the same violet
+The sun/moon icon in the header toggles between dark and light. Both keep the same violet
 accent identity; only the background/border/text neutrals change.
 
 ## Mobile (Android)

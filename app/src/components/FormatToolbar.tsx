@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import {
+  Bold, Code, Ellipsis, Superscript, Image, Italic, Link, List, ListChecks, ListOrdered, Minus, Quote,
+  SquareCode, Strikethrough, Table
+} from "lucide-react";
+import { useDismiss } from "./useDismiss";
 
 interface FormatToolbarProps {
   onBold: () => void;
@@ -38,21 +43,8 @@ export default function FormatToolbar({
   const [moreOpen, setMoreOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!moreOpen) return;
-    function onPointerDown(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMoreOpen(false);
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMoreOpen(false);
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [moreOpen]);
+  const closeMore = useCallback(() => setMoreOpen(false), []);
+  useDismiss(menuRef, moreOpen, closeMore);
 
   function runAndClose(action: () => void) {
     action();
@@ -61,9 +53,9 @@ export default function FormatToolbar({
 
   return (
     <div className="format-toolbar">
-      <button className="format-button" onClick={onBold} title="Bold (Ctrl+B)"><strong>B</strong></button>
-      <button className="format-button" onClick={onItalic} title="Italic (Ctrl+I)"><em>I</em></button>
-      <button className="format-button" onClick={onCode} title="Code (Ctrl+E)"><code>{"</>"}</code></button>
+      <button className="format-button" onClick={onBold} title="Bold (Ctrl+B)"><Bold size={15} /></button>
+      <button className="format-button" onClick={onItalic} title="Italic (Ctrl+I)"><Italic size={15} /></button>
+      <button className="format-button" onClick={onCode} title="Code (Ctrl+E)"><Code size={15} /></button>
       <select
         className="format-heading-select"
         value=""
@@ -82,24 +74,24 @@ export default function FormatToolbar({
         <option value="5">Heading 5</option>
         <option value="6">Heading 6</option>
       </select>
-      <button className="format-button" onClick={onLink} title="Link">🔗</button>
+      <button className="format-button" onClick={onLink} title="Link"><Link size={15} /></button>
       <span className="format-divider" />
       <div className="format-more" ref={menuRef}>
         <button className="format-button" onClick={() => setMoreOpen((v) => !v)} title="More formatting">
-          More ⋯
+          <Ellipsis size={15} /> More
         </button>
         {moreOpen && (
-          <div className="format-more-menu">
-            <button onClick={() => runAndClose(onStrikethrough)}><s>S</s> Strikethrough</button>
-            <button onClick={() => runAndClose(onCodeBlock)}><code>{"{ }"}</code> Code block</button>
-            <button onClick={() => runAndClose(onBlockquote)}>" Blockquote</button>
-            <button onClick={() => runAndClose(onBulletList)}>• Bullet list</button>
-            <button onClick={() => runAndClose(onNumberedList)}>1. Numbered list</button>
-            <button onClick={() => runAndClose(onTaskList)}>☑ Task list</button>
-            <button onClick={() => runAndClose(onImage)}>🖼 Image</button>
-            <button onClick={() => runAndClose(onTable)}>⊞ Table</button>
-            <button onClick={() => runAndClose(onHorizontalRule)}>― Horizontal rule</button>
-            <button onClick={() => runAndClose(onFootnote)}>[^] Footnote</button>
+          <div className="popover-menu">
+            <button onClick={() => runAndClose(onStrikethrough)}><Strikethrough size={14} /> Strikethrough</button>
+            <button onClick={() => runAndClose(onCodeBlock)}><SquareCode size={14} /> Code block</button>
+            <button onClick={() => runAndClose(onBlockquote)}><Quote size={14} /> Blockquote</button>
+            <button onClick={() => runAndClose(onBulletList)}><List size={14} /> Bullet list</button>
+            <button onClick={() => runAndClose(onNumberedList)}><ListOrdered size={14} /> Numbered list</button>
+            <button onClick={() => runAndClose(onTaskList)}><ListChecks size={14} /> Task list</button>
+            <button onClick={() => runAndClose(onImage)}><Image size={14} /> Image</button>
+            <button onClick={() => runAndClose(onTable)}><Table size={14} /> Table</button>
+            <button onClick={() => runAndClose(onHorizontalRule)}><Minus size={14} /> Horizontal rule</button>
+            <button onClick={() => runAndClose(onFootnote)}><Superscript size={14} /> Footnote</button>
           </div>
         )}
       </div>

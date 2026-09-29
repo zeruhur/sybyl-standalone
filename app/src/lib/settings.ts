@@ -13,7 +13,8 @@ export const DEFAULT_SETTINGS: SybylSettings = {
   lonelogContextDepth: 60,
   lonelogWrapCodeBlock: true,
   lonelogAutoIncScene: true,
-  theme: "dark"
+  theme: "dark",
+  showFormatToolbar: false
 };
 
 export function normalizeSettings(data: unknown): SybylSettings {
