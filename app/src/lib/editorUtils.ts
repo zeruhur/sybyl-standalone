@@ -10,7 +10,8 @@ export function insertAtCursor(view: EditorView, text: string): InsertedRange {
   const insert = `\n${text}\n`;
   view.dispatch({
     changes: { from: pos, insert },
-    selection: { anchor: pos + insert.length }
+    selection: { anchor: pos + insert.length },
+    scrollIntoView: true
   });
   view.focus();
   return { from: pos + 1, to: pos + 1 + text.length };

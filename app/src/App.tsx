@@ -17,6 +17,9 @@ import ToolkitPanel from "./components/ToolkitPanel";
 import DashboardPanel from "./components/DashboardPanel";
 import VersionHistoryModal from "./components/VersionHistoryModal";
 import UserGuideModal from "./components/UserGuideModal";
+import PlayComposer, { PlayComposerHandle } from "./components/PlayComposer";
+import SideDrawer, { DrawerTab } from "./components/SideDrawer";
+import { ComposerIntent } from "./lib/composer";
 import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
 import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
@@ -169,8 +172,8 @@ export default function App() {
   const [deleteTarget, setDeleteTarget] = useState<VaultFile | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [toolkitOpen, setToolkitOpen] = useState(false);
-  const [dashboardOpen, setDashboardOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("toolkit");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [userGuideOpen, setUserGuideOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -185,6 +188,7 @@ export default function App() {
   const [version, setVersion] = useState("");
 
   const editorViewRef = useRef<EditorView | null>(null);
+  const composerRef = useRef<PlayComposerHandle | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const pendingSaveRef = useRef<{ file: VaultFile; body: string } | null>(null);
   const statusTimer = useRef<number | undefined>(undefined);
@@ -243,6 +247,9 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
         e.preventDefault();
         setSwitcherOpen((open) => !open);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        composerRef.current?.focus();
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -751,26 +758,74 @@ export default function App() {
 
   // ---- Commands ----
 
+  // The play actions below are shared by the command-palette modals and the play composer. The
+  // composer appends to the end of the log; the palette keeps inserting at the cursor.
+
+  async function playAskOracle(question: string, oracleResult: string, placement: Placement = "cursor"): Promise<boolean> {
+    const file = activeFileRef.current;
+    const message = oracleResult
+      ? `Oracle question: ${question}
+Oracle result: ${oracleResult}
+Interpret this result in the context of the scene. Third person, neutral, 2-3 lines.`
+      : `Oracle question: ${question}
+Oracle mode: ${file?.fm.oracle_mode ?? "yes-no"}
+Run the oracle and give the result plus a 1-2 line neutral interpretation.`;
+    return runGeneration({
+      userMessage: message,
+      placement,
+      format: (text, insideCodeBlock) => {
+        if (oracleResult) {
+          return formatAskOracle(question, oracleResult, text, lonelogOpts(insideCodeBlock));
+        }
+        const parsed = parseLonelogOracleResponse(text);
+        return formatAskOracle(question, parsed.result, parsed.interpretation, lonelogOpts(insideCodeBlock));
+      }
+    });
+  }
+
+  async function playStartScene(sceneDesc: string, placement: Placement = "cursor"): Promise<boolean> {
+    const counter = activeFileRef.current?.fm.scene_counter ?? 1;
+    const anchor = sceneDesc
+      ? `the atmosphere and setting of: "${sceneDesc}"`
+      : "a fitting location and atmosphere for the story so far, choosing one that makes sense given the established scene context";
+    const inserted = await runGeneration({
+      userMessage: `START SCENE. Generate only: 2-3 lines of third-person past-tense prose describing ${anchor}. No dialogue. No PC actions. No additional commentary.`,
+      placement,
+      format: (text) => formatStartScene(text, `S${counter}`, sceneDesc, lonelogOpts())
+    });
+    // A failed or cancelled generation inserted no scene header, so don't burn the number.
+    if (inserted && settings.lonelogAutoIncScene) {
+      await updateActiveFrontmatter({ scene_counter: counter + 1 });
+    }
+    return inserted;
+  }
+
+  async function playDeclareAction(action: string, roll: string, placement: Placement = "cursor"): Promise<boolean> {
+    const rollLine = roll ? `
+Roll result: ${roll}` : "";
+    return runGeneration({
+      userMessage: `PC action: ${action}${rollLine}
+Describe only the consequences and world reaction. Do not describe the PC's action.`,
+      placement,
+      format: (text, insideCodeBlock) => formatDeclareAction(action, roll, text, lonelogOpts(insideCodeBlock))
+    });
+  }
+
+  async function playInterpretOracle(oracle: string, placement: Placement = "below-selection"): Promise<boolean> {
+    return runGeneration({
+      userMessage: `Interpret this oracle result in the context of the current scene: "${oracle}"
+Neutral, third-person, 2-3 lines. No dramatic language.`,
+      format: (text, insideCodeBlock) => formatInterpretOracle(text, lonelogOpts(insideCodeBlock)),
+      placement
+    });
+  }
+
   function cmdAskOracle() {
     openModal("Ask Oracle", ASK_ORACLE_FIELDS, async (values) => {
       closeModal();
       const question = values.question?.trim();
       if (!question) return;
-      const oracleResult = values.result?.trim();
-      const file = activeFileRef.current;
-      const message = oracleResult
-        ? `Oracle question: ${question}\nOracle result: ${oracleResult}\nInterpret this result in the context of the scene. Third person, neutral, 2-3 lines.`
-        : `Oracle question: ${question}\nOracle mode: ${file?.fm.oracle_mode ?? "yes-no"}\nRun the oracle and give the result plus a 1-2 line neutral interpretation.`;
-      await runGeneration({
-        userMessage: message,
-        format: (text, insideCodeBlock) => {
-          if (oracleResult) {
-            return formatAskOracle(question, oracleResult, text, lonelogOpts(insideCodeBlock));
-          }
-          const parsed = parseLonelogOracleResponse(text);
-          return formatAskOracle(question, parsed.result, parsed.interpretation, lonelogOpts(insideCodeBlock));
-        }
-      });
+      await playAskOracle(question, values.result?.trim() ?? "");
     });
   }
 
@@ -780,19 +835,7 @@ export default function App() {
       [{ key: "sceneDesc", label: "Scene description", optional: true, placeholder: "Leave blank to let Sybyl set the scene." }],
       async (values) => {
         closeModal();
-        const sceneDesc = values.sceneDesc?.trim() ?? "";
-        const counter = activeFileRef.current?.fm.scene_counter ?? 1;
-        const anchor = sceneDesc
-          ? `the atmosphere and setting of: "${sceneDesc}"`
-          : "a fitting location and atmosphere for the story so far, choosing one that makes sense given the established scene context";
-        const inserted = await runGeneration({
-          userMessage: `START SCENE. Generate only: 2-3 lines of third-person past-tense prose describing ${anchor}. No dialogue. No PC actions. No additional commentary.`,
-          format: (text) => formatStartScene(text, `S${counter}`, sceneDesc, lonelogOpts())
-        });
-        // A failed or cancelled generation inserted no scene header, so don't burn the number.
-        if (inserted && settings.lonelogAutoIncScene) {
-          await updateActiveFrontmatter({ scene_counter: counter + 1 });
-        }
+        await playStartScene(values.sceneDesc?.trim() ?? "");
       }
     );
   }
@@ -807,12 +850,7 @@ export default function App() {
       async (values) => {
         if (!values.action) return;
         closeModal();
-        const roll = values.roll?.trim() ?? "";
-        const rollLine = roll ? `\nRoll result: ${roll}` : "";
-        await runGeneration({
-          userMessage: `PC action: ${values.action}${rollLine}\nDescribe only the consequences and world reaction. Do not describe the PC's action.`,
-          format: (text, insideCodeBlock) => formatDeclareAction(values.action, roll, text, lonelogOpts(insideCodeBlock))
-        });
+        await playDeclareAction(values.action, values.roll?.trim() ?? "");
       }
     );
   }
@@ -821,27 +859,20 @@ export default function App() {
     const view = editorViewRef.current;
     const selected = view ? getSelection(view) : "";
     if (selected) {
-      await runGeneration({
-        userMessage: `Interpret this oracle result in the context of the current scene: "${selected}"\nNeutral, third-person, 2-3 lines. No dramatic language.`,
-        format: (text, insideCodeBlock) => formatInterpretOracle(text, lonelogOpts(insideCodeBlock)),
-        placement: "below-selection"
-      });
+      await playInterpretOracle(selected);
       return;
     }
     openModal("Interpret Oracle Result", [{ key: "oracle", label: "Oracle result" }], async (values) => {
       const oracle = values.oracle?.trim();
       if (!oracle) return;
       closeModal();
-      await runGeneration({
-        userMessage: `Interpret this oracle result in the context of the current scene: "${oracle}"\nNeutral, third-person, 2-3 lines. No dramatic language.`,
-        format: (text, insideCodeBlock) => formatInterpretOracle(text, lonelogOpts(insideCodeBlock)),
-        placement: "below-selection"
-      });
+      await playInterpretOracle(oracle);
     });
   }
 
-  async function cmdExpandScene() {
-    await runGeneration({
+  async function cmdExpandScene(placement: Placement = "cursor") {
+    return runGeneration({
+      placement,
       userMessage: "Expand the current scene into a prose passage. Third person, past tense, 100-150 words. No dialogue. Do not describe the PC's internal thoughts or decisions. Stay strictly within the established scene context.",
       format: (text) => formatExpandScene(text, lonelogOpts()),
       maxOutputTokens: 600
@@ -874,15 +905,17 @@ Keep it concise — 4 bullet points, one short sentence each.`;
     );
   }
 
-  async function cmdWhatNow() {
-    await runGeneration({
+  async function cmdWhatNow(placement: Placement = "cursor") {
+    return runGeneration({
+      placement,
       userMessage: "Based on the current scene context, suggest 1-2 possible consequences or complications. Present them as neutral options, not as narrative outcomes. Do not choose between them.",
       format: (text, insideCodeBlock) => formatSuggestConsequence(text, lonelogOpts(insideCodeBlock))
     });
   }
 
-  async function cmdWhatCanIDo() {
-    await runGeneration({
+  async function cmdWhatCanIDo(placement: Placement = "cursor") {
+    return runGeneration({
+      placement,
       userMessage: "The player is stuck. Based on the current scene context, suggest exactly 3 concrete actions the PC could take next. Present them as neutral options numbered 1–3. Do not resolve or narrate any outcome. Do not recommend one over another.",
       format: (text, insideCodeBlock) => formatSuggestConsequence(text, lonelogOpts(insideCodeBlock))
     });
@@ -1296,15 +1329,50 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     }
   }
 
+  /** The play composer appends to the end of the log (it's the "next line" of play); only a blank
+   * Interpret works on the editor selection, and so inserts below it like the palette command. */
+  async function handleComposerSubmit(intent: ComposerIntent): Promise<boolean> {
+    if (!activeFileRef.current || loading) return false;
+    switch (intent.mode) {
+      case "oracle":
+        return playAskOracle(intent.text, intent.detail, "end-of-note");
+      case "action":
+        return playDeclareAction(intent.text, intent.detail, "end-of-note");
+      case "scene":
+        return playStartScene(intent.text, "end-of-note");
+      case "interpret": {
+        if (intent.text) return playInterpretOracle(intent.text, "end-of-note");
+        const view = editorViewRef.current;
+        const selected = view ? getSelection(view) : "";
+        return selected ? playInterpretOracle(selected) : false;
+      }
+    }
+  }
+
+  function editorHasSelection(): boolean {
+    const view = editorViewRef.current;
+    return !!view && getSelection(view) !== "";
+  }
+
+  /** Opens the side drawer on `tab`, or closes it if it's already showing that tab. */
+  function toggleDrawer(tab: DrawerTab) {
+    if (drawerOpen && drawerTab === tab) {
+      setDrawerOpen(false);
+    } else {
+      setDrawerTab(tab);
+      setDrawerOpen(true);
+    }
+  }
+
   const commands: CommandItem[] = [
     { id: "ask-oracle", label: "Ask Oracle", run: cmdAskOracle },
     { id: "start-scene", label: "Start Scene", run: cmdStartScene },
     { id: "declare-action", label: "Declare Action", run: cmdDeclareAction },
     { id: "interpret-oracle", label: "Interpret Oracle Roll", run: cmdInterpretOracle },
-    { id: "expand-scene", label: "Expand Scene", run: cmdExpandScene },
+    { id: "expand-scene", label: "Expand Scene", run: () => void cmdExpandScene() },
     { id: "adventure-seed", label: "Adventure Seed", run: cmdAdventureSeed },
-    { id: "what-now", label: "What Now", run: cmdWhatNow },
-    { id: "what-can-i-do", label: "What Can I Do", run: cmdWhatCanIDo },
+    { id: "what-now", label: "What Now", run: () => void cmdWhatNow() },
+    { id: "what-can-i-do", label: "What Can I Do", run: () => void cmdWhatCanIDo() },
     { id: "insert-campaign-header", label: "Insert Campaign Header", run: cmdInsertCampaignHeader },
     { id: "new-session-header", label: "New Session Header", run: cmdNewSessionHeader },
     { id: "edit-campaign-info", label: "Edit Campaign Info", run: cmdEditCampaignInfo },
@@ -1376,16 +1444,26 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             </button>
             <button
               disabled={!vaultPath}
-              onClick={() => { setToolkitOpen((v) => !v); setCommandMenuOpen(false); }}
+              className={drawerOpen && drawerTab === "toolkit" ? "active" : undefined}
+              onClick={() => { toggleDrawer("toolkit"); setCommandMenuOpen(false); }}
             >
               Toolkit
             </button>
             <button
               disabled={!activeFile}
-              onClick={() => { setDashboardOpen((v) => !v); setCommandMenuOpen(false); }}
+              className={drawerOpen && drawerTab === "dashboard" ? "active" : undefined}
+              onClick={() => { toggleDrawer("dashboard"); setCommandMenuOpen(false); }}
               title="Open threads, clocks, and tracks for this campaign"
             >
               Dashboard
+            </button>
+            <button
+              disabled={!activeFile}
+              className={drawerOpen && drawerTab === "info" ? "active" : undefined}
+              onClick={() => { toggleDrawer("info"); setCommandMenuOpen(false); }}
+              title="Campaign info for this note"
+            >
+              Info
             </button>
             <button onClick={() => { setSettingsOpen(true); setCommandMenuOpen(false); }}>Settings</button>
             <button onClick={() => { setUserGuideOpen(true); setCommandMenuOpen(false); }} title="Open the User Guide">
@@ -1393,33 +1471,6 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             </button>
           </div>
         </div>
-        {toolkitOpen && vaultPath && (
-          <ToolkitPanel
-            deckSession={deckSession}
-            tableFiles={tableFiles}
-            canInsert={!!activeFile}
-            onRollDice={toolkitRollDice}
-            onDrawCard={toolkitDrawCard}
-            onReshuffleDeck={toolkitReshuffleDeck}
-            onSetDeckType={toolkitSetDeckType}
-            onGenerateWord={toolkitGenerateWord}
-            onRollTable={toolkitRollTable}
-            onRefreshTables={() => vaultPath && refreshTableFiles(vaultPath)}
-            onInsert={toolkitInsert}
-            chaosFactor={oracleChaosFactor}
-            onSetChaosFactor={setOracleChaosFactor}
-            onAskOracle={toolkitAskOracle}
-            deckFolders={deckFolders}
-            customDeckSession={customDeckSession}
-            onRefreshDeckFolders={() => vaultPath && refreshDeckFolders(vaultPath)}
-            onSetCustomDeck={toolkitSetCustomDeck}
-            onDrawCustomCard={toolkitDrawCustomCard}
-            onReshuffleCustomDeck={toolkitReshuffleCustomDeck}
-            onCutUp={toolkitCutUp}
-            onLoadTableText={toolkitLoadTableText}
-          />
-        )}
-        {dashboardOpen && activeFile && <DashboardPanel body={body} />}
         {status && (
           <div className="status-bar">
             <span>{status}</span>
@@ -1433,33 +1484,91 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
             )}
           </div>
         )}
-        {activeFile ? (
-          <>
-            <CampaignInfoPanel fm={activeFile.fm} />
-            <FormatToolbar
-              onBold={formatBold}
-              onItalic={formatItalic}
-              onStrikethrough={formatStrikethrough}
-              onCode={formatCode}
-              onCodeBlock={formatCodeBlock}
-              onHeading={formatHeading}
-              onBlockquote={formatBlockquote}
-              onBulletList={formatBulletList}
-              onNumberedList={formatNumberedList}
-              onTaskList={formatTaskList}
-              onLink={formatLink}
-              onImage={formatImage}
-              onTable={formatTable}
-              onHorizontalRule={formatHorizontalRule}
-              onFootnote={formatFootnote}
-            />
-            <Editor value={body} onChange={handleBodyChange} theme={settings.theme} editorRef={editorViewRef} />
-          </>
-        ) : (
-          <div className="empty-state">
-            {vaultPath ? "Select a file from the sidebar to begin." : "Choose a vault folder to get started."}
+        <div className="workspace">
+          <div className="editor-column">
+            {activeFile ? (
+              <>
+                <FormatToolbar
+                  onBold={formatBold}
+                  onItalic={formatItalic}
+                  onStrikethrough={formatStrikethrough}
+                  onCode={formatCode}
+                  onCodeBlock={formatCodeBlock}
+                  onHeading={formatHeading}
+                  onBlockquote={formatBlockquote}
+                  onBulletList={formatBulletList}
+                  onNumberedList={formatNumberedList}
+                  onTaskList={formatTaskList}
+                  onLink={formatLink}
+                  onImage={formatImage}
+                  onTable={formatTable}
+                  onHorizontalRule={formatHorizontalRule}
+                  onFootnote={formatFootnote}
+                />
+                <Editor value={body} onChange={handleBodyChange} theme={settings.theme} editorRef={editorViewRef} />
+                <PlayComposer
+                  ref={composerRef}
+                  disabled={!activeFile}
+                  loading={loading}
+                  hasSelection={editorHasSelection}
+                  onSubmit={handleComposerSubmit}
+                  onExpandScene={() => void cmdExpandScene("end-of-note")}
+                  onWhatNow={() => void cmdWhatNow("end-of-note")}
+                  onWhatCanIDo={() => void cmdWhatCanIDo("end-of-note")}
+                  onMoreCommands={() => setPaletteOpen(true)}
+                />
+              </>
+            ) : (
+              <div className="empty-state">
+                {vaultPath ? "Select a file from the sidebar to begin." : "Choose a vault folder to get started."}
+              </div>
+            )}
           </div>
-        )}
+          <SideDrawer
+            open={drawerOpen}
+            tab={drawerTab}
+            onTabChange={setDrawerTab}
+            onClose={() => setDrawerOpen(false)}
+            panes={[
+              {
+                id: "toolkit",
+                label: "Toolkit",
+                content: vaultPath ? (
+                  <ToolkitPanel
+                    deckSession={deckSession}
+                    tableFiles={tableFiles}
+                    canInsert={!!activeFile}
+                    onRollDice={toolkitRollDice}
+                    onDrawCard={toolkitDrawCard}
+                    onReshuffleDeck={toolkitReshuffleDeck}
+                    onSetDeckType={toolkitSetDeckType}
+                    onGenerateWord={toolkitGenerateWord}
+                    onRollTable={toolkitRollTable}
+                    onRefreshTables={() => vaultPath && refreshTableFiles(vaultPath)}
+                    onInsert={toolkitInsert}
+                    chaosFactor={oracleChaosFactor}
+                    onSetChaosFactor={setOracleChaosFactor}
+                    onAskOracle={toolkitAskOracle}
+                    deckFolders={deckFolders}
+                    customDeckSession={customDeckSession}
+                    onRefreshDeckFolders={() => vaultPath && refreshDeckFolders(vaultPath)}
+                    onSetCustomDeck={toolkitSetCustomDeck}
+                    onDrawCustomCard={toolkitDrawCustomCard}
+                    onReshuffleCustomDeck={toolkitReshuffleCustomDeck}
+                    onCutUp={toolkitCutUp}
+                    onLoadTableText={toolkitLoadTableText}
+                  />
+                ) : null
+              },
+              { id: "dashboard", label: "Dashboard", content: activeFile ? <DashboardPanel body={body} /> : null },
+              {
+                id: "info",
+                label: "Campaign Info",
+                content: activeFile ? <CampaignInfoPanel fm={activeFile.fm} onEdit={cmdEditCampaignInfo} /> : null
+              }
+            ]}
+          />
+        </div>
       </main>
 
       {settingsOpen && (

@@ -11,6 +11,8 @@ see [`BUILDING.md`](BUILDING.md).
 - [Getting started](#getting-started)
 - [Notes and campaigns](#notes-and-campaigns)
 - [The editor](#the-editor)
+- [Playing: the composer](#playing-the-composer)
+- [The side panel](#the-side-panel)
 - [Campaign Info panel](#campaign-info-panel)
 - [Dashboard: threads, clocks, tracks](#dashboard-threads-clocks-tracks)
 - [Version history](#version-history)
@@ -70,16 +72,50 @@ Link) plus a **More ⋯** popover for the rest (Strikethrough, Code block, Block
 Numbered list, Task list, Image, Table, Horizontal rule, Footnote). Only Bold/Italic/Code have
 keyboard shortcuts (Ctrl+B/I/E) — everything else is toolbar-only.
 
+## Playing: the composer
+
+The input line under the editor is the fastest way to play. Its first character picks what happens,
+following Lonelog's own beat symbols, and Enter sends it:
+
+| Type | What happens |
+|---|---|
+| `? Is the guard asleep?` | Ask Oracle — Sybyl rolls and interprets |
+| `? Is the guard asleep? -> Yes, but` | Ask Oracle with a result you already rolled |
+| `@ Pick the lock` | Declare Action — Sybyl narrates the consequences |
+| `@ Pick the lock d: 2d6=8` | Declare Action with a roll result |
+| `-> Yes, and` | Interpret an oracle result |
+
+The chips above the input (**? Oracle**, **@ Action**, **S Scene**, **-> Interpret**) do the same
+without typing a symbol: pick one, then type plain text. **Scene** can be sent blank to let Sybyl
+choose the setting, and **Interpret** can be sent blank to interpret whatever text you've selected
+in the editor. **Expand**, **What now?** and **What can I do?** run immediately, and **More…** opens
+the full command palette.
+
+Everything sent from the composer is appended to the **end** of the log, where play continues. The
+command palette (Ctrl+K) still inserts at the cursor, for when you want output somewhere else.
+Ctrl+J jumps to the composer from anywhere. The input is only cleared once the result has landed,
+so a failed or cancelled request doesn't lose what you typed.
+
+## The side panel
+
+**Toolkit**, **Dashboard** and **Info** in the command bar open one panel beside the editor, with a
+tab for each. Clicking the button for the tab that's already showing closes the panel. Switching
+tabs doesn't reset anything: a Toolkit roll result is still there when you come back from the
+Dashboard. On narrow screens the panel slides up from the bottom instead, and tapping outside it
+closes it.
+
 ## Campaign Info panel
 
-A collapsible strip above the editor (click **▸ Campaign Info** to expand) shows every campaign
+The **Campaign Info** tab of the side panel (the **Info** button) shows every campaign
 frontmatter field at a glance: title, type, player, ruleset, genre, PCs, dates, tools, themes,
 tone, notes, and the digested game context. Since the editor never renders frontmatter directly,
-this is the only place to confirm a frontmatter edit actually landed.
+this is the only place to confirm a frontmatter edit actually landed. Its **Edit campaign info**
+button runs the Edit Campaign Info command.
 
 ## Dashboard: threads, clocks, tracks
 
-Click **Dashboard** in the command bar (needs an open note) to see every `[Thread:]`, `[Clock:]`,
+Click **Dashboard** in the command bar (needs an open note) to open the side panel's Dashboard
+tab, showing every `[Thread:]`, `[Clock:]`,
 and `[Track:]` tag in the current note, aggregated live as you type:
 
 - **Threads** — open ones are listed directly; closed ones collapse behind a "N closed" toggle.
@@ -149,13 +185,14 @@ subsequent request reuses that instead of re-uploading the file.
 
 **Import Note**, **Export Note**, **Save Snapshot**, and **Version History** live in the sidebar,
 not the command palette, since they aren't about generating text into the current cursor
-position. The **Toolkit** and **Dashboard** panels live behind their own command-bar buttons for
-the same reason.
+position. The **Toolkit**, **Dashboard** and **Info** panels live in the
+[side panel](#the-side-panel) for the same reason. The most common play commands are also one
+keystroke away in the [composer](#playing-the-composer).
 
 ## The Toolkit
 
-Click **Toolkit** in the command bar (no note required) to open a tabbed panel of offline,
-deterministic tools — none of them call an AI provider:
+Click **Toolkit** in the command bar (no note required) to open the side panel's Toolkit tab: a
+set of offline, deterministic tools — none of them call an AI provider:
 
 - **Dice** — full expression roller (`2d6+2`, `4d6kh3`, exploding `d6!`, dice-pool
   successes/failures) plus one-tap quick buttons for d4–d20/d%.
@@ -173,7 +210,8 @@ deterministic tools — none of them call an AI provider:
 - **Tables** — rolls on custom random tables you author yourself as plain `.md`/`.txt` files in
   `<vault>/tables/`, one entry per line (optionally weighted with a trailing `^N`).
 
-Every result has its own **Insert** button, which is disabled (not hidden) when no note is open.
+Every result has its own **Insert** button, which inserts at the editor cursor and is disabled
+(not hidden) when no note is open.
 
 ## Sources and rules grounding
 
@@ -234,7 +272,7 @@ Sybyl runs on Android with a few differences from desktop:
   on first launch, and the "Change vault" button is hidden.
 - On narrow screens, the sidebar becomes an off-canvas panel (hamburger button, top-left) and the
   command-bar actions collapse behind a **⋯** button that opens a button-board menu instead of
-  wrapping onto extra rows.
+  wrapping onto extra rows. The side panel becomes a bottom sheet.
 
 ## Keyboard shortcuts
 
@@ -242,6 +280,7 @@ Sybyl runs on Android with a few differences from desktop:
 |---|---|
 | Ctrl+K | Open Command Palette |
 | Ctrl+O | Open Search (full-text file switcher) |
+| Ctrl+J | Jump to the play composer |
 | Ctrl+B | Bold selection |
 | Ctrl+I | Italic selection |
 | Ctrl+E | Code selection |
