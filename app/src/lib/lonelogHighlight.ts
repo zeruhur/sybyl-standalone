@@ -46,6 +46,48 @@ function buildPlugin(matcher: MatchDecorator) {
   );
 }
 
+// Whole-line classes, on top of the token marks above, so each kind of beat reads at a glance in
+// a long log: scene headers get a heading treatment, beat lines a colored left rule. The patterns
+// mirror sceneMatcher/beatMatcher without the global flag, since each is tested against one line.
+const SCENE_LINE = /^#{0,6}\s*(?:T\d+-)?S\d+[\w.]*\s*\*[^*]*\*/;
+const BEAT_LINE = /^(@|\?|->|=>|d:)/;
+
+function buildLineDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const { from, to } of view.visibleRanges) {
+    let pos = from;
+    while (pos <= to) {
+      const line = view.state.doc.lineAt(pos);
+      const beat = BEAT_LINE.exec(line.text);
+      const className = SCENE_LINE.test(line.text)
+        ? "cm-lonelog-line-scene"
+        : beat
+        ? `cm-lonelog-line cm-lonelog-line-${beatClass(beat[1])}`
+        : null;
+      if (className) builder.add(line.from, line.from, Decoration.line({ class: className }));
+      pos = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
+const lineClassPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = buildLineDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = buildLineDecorations(update.view);
+      }
+    }
+  },
+  {
+    decorations: (v) => v.decorations
+  }
+);
+
 const DICE_LINE_PREFIX = /^\s*d:/;
 
 function buildDiceCardDecorations(view: EditorView): DecorationSet {
@@ -95,5 +137,5 @@ const diceCardPlugin = ViewPlugin.fromClass(
 );
 
 export function lonelogHighlight() {
-  return [buildPlugin(sceneMatcher), buildPlugin(tagMatcher), buildPlugin(beatMatcher), diceCardPlugin];
+  return [buildPlugin(sceneMatcher), buildPlugin(tagMatcher), buildPlugin(beatMatcher), diceCardPlugin, lineClassPlugin];
 }

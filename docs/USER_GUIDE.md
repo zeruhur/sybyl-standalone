@@ -11,6 +11,8 @@ see [`BUILDING.md`](BUILDING.md).
 - [Getting started](#getting-started)
 - [Notes and campaigns](#notes-and-campaigns)
 - [The editor](#the-editor)
+- [Playing: the composer](#playing-the-composer)
+- [The side panel](#the-side-panel)
 - [Campaign Info panel](#campaign-info-panel)
 - [Dashboard: threads, clocks, tracks](#dashboard-threads-clocks-tracks)
 - [Version history](#version-history)
@@ -34,7 +36,7 @@ AI provider when running a command.
 1. Pick or create a folder for your vault.
 2. Click **+ New Note** in the sidebar, fill in whatever campaign fields you know (all optional
    except type), and save.
-3. Open **Settings** and add an API key for at least one provider (see
+3. Open **Settings** (the gear icon, top right) and add an API key for at least one provider (see
    [Settings and providers](#settings-and-providers)) if you want AI-backed commands. Everything
    under [The Toolkit](#the-toolkit) works with no API key at all.
 
@@ -63,23 +65,70 @@ You don't have to write Lonelog by hand — most commands insert correctly-tagge
 
 The main pane is a CodeMirror editor with full GFM support (tables, task lists, strikethrough,
 autolinks) plus Lonelog-aware syntax highlighting for scene headers, tags, and dice/card notation
-on `d:` lines. Changes autosave about half a second after you stop typing.
+on `d:` lines. Scene headers get a heading treatment and each beat line (`@`, `?`, `d:`, `->`,
+`=>`) a colored rule down its left edge, so a long log is easy to scan. Changes autosave about half
+a second after you stop typing.
 
-The **formatting toolbar** above the editor has five buttons inline (Bold, Italic, Code, Heading,
-Link) plus a **More ⋯** popover for the rest (Strikethrough, Code block, Blockquote, Bullet list,
-Numbered list, Task list, Image, Table, Horizontal rule, Footnote). Only Bold/Italic/Code have
-keyboard shortcuts (Ctrl+B/I/E) — everything else is toolbar-only.
+**Formatting.** Select some text and a small bubble appears above it with Bold, Italic,
+Strikethrough, Code and Link. The full **formatting toolbar** is hidden by default; the **Aa**
+button next to the note title shows or hides it (the choice is remembered). It has five buttons
+inline (Bold, Italic, Code, Heading, Link) plus a **More** popover for the rest (Strikethrough,
+Code block, Blockquote, Bullet list, Numbered list, Task list, Image, Table, Horizontal rule,
+Footnote). The **Heading** button shows the current line's level and opens a row of level chips:
+**¶** for plain text, then **H1**–**H6**. Picking the level the line already has removes it.
+
+Keyboard shortcuts: Ctrl+B/I/E for Bold/Italic/Code, **Ctrl+1**–**Ctrl+6** to set a heading level
+(pressing the current level again removes it), and **Ctrl+0** to turn the line back into plain
+text. They work whether or not the toolbar is showing.
+
+**The note menu.** Click the note's title in the header for everything that acts on the note as
+a whole: **Edit campaign info**, **Save snapshot**, **Version history**, **Export…** and
+**Delete note…**. The sidebar only holds vault-level actions (New Note, Import, Change vault).
+
+## Playing: the composer
+
+The input line under the editor is the fastest way to play. Its first character picks what happens,
+following Lonelog's own beat symbols, and Enter sends it:
+
+| Type | What happens |
+|---|---|
+| `? Is the guard asleep?` | Ask Oracle — Sybyl rolls and interprets |
+| `? Is the guard asleep? -> Yes, but` | Ask Oracle with a result you already rolled |
+| `@ Pick the lock` | Declare Action — Sybyl narrates the consequences |
+| `@ Pick the lock d: 2d6=8` | Declare Action with a roll result |
+| `-> Yes, and` | Interpret an oracle result |
+
+The chips above the input (**? Oracle**, **@ Action**, **S Scene**, **-> Interpret**) do the same
+without typing a symbol: pick one, then type plain text. **Scene** can be sent blank to let Sybyl
+choose the setting, and **Interpret** can be sent blank to interpret whatever text you've selected
+in the editor. **Expand**, **What now?** and **What can I do?** run immediately, and **More…** opens
+the full command palette.
+
+Everything sent from the composer is appended to the **end** of the log, where play continues. The
+command palette (Ctrl+K) still inserts at the cursor, for when you want output somewhere else.
+Ctrl+J jumps to the composer from anywhere. The input is only cleared once the result has landed,
+so a failed or cancelled request doesn't lose what you typed.
+
+## The side panel
+
+**Toolkit**, **Dashboard** and **Info** in the command bar open one panel beside the editor, with a
+tab for each. Clicking the button for the tab that's already showing closes the panel. Switching
+tabs doesn't reset anything: a Toolkit roll result is still there when you come back from the
+Dashboard. On narrow screens the panel slides up from the bottom instead, and tapping outside it
+closes it.
 
 ## Campaign Info panel
 
-A collapsible strip above the editor (click **▸ Campaign Info** to expand) shows every campaign
+The **Campaign Info** tab of the side panel (the **Info** button) shows every campaign
 frontmatter field at a glance: title, type, player, ruleset, genre, PCs, dates, tools, themes,
 tone, notes, and the digested game context. Since the editor never renders frontmatter directly,
-this is the only place to confirm a frontmatter edit actually landed.
+this is the only place to confirm a frontmatter edit actually landed. Its **Edit campaign info**
+button runs the Edit Campaign Info command.
 
 ## Dashboard: threads, clocks, tracks
 
-Click **Dashboard** in the command bar (needs an open note) to see every `[Thread:]`, `[Clock:]`,
+Click **Dashboard** in the command bar (needs an open note) to open the side panel's Dashboard
+tab, showing every `[Thread:]`, `[Clock:]`,
 and `[Track:]` tag in the current note, aggregated live as you type:
 
 - **Threads** — open ones are listed directly; closed ones collapse behind a "N closed" toggle.
@@ -94,8 +143,8 @@ scrolls out of view.
 
 Two independent safety nets protect a note beyond CodeMirror's in-session undo:
 
-- **Snapshot** (sidebar button) — saves the note's current state on demand.
-- **History** (sidebar button) — opens a list of every saved snapshot for the current note,
+- **Save snapshot** (note menu) — saves the note's current state on demand.
+- **Version history** (note menu) — opens a list of every saved snapshot for the current note,
   newest first, each with a **Restore** button.
 
 Sybyl also snapshots a note automatically when you open it, throttled to at most once every 10
@@ -139,7 +188,7 @@ Structural / non-AI commands:
 | Add Source File | Attaches a PDF/text/markdown source to the note |
 | Manage Sources | Lists and removes attached sources |
 
-Every AI-backed command can be **cancelled** mid-flight (Cancel button in the status bar) and the
+Every AI-backed command can be **cancelled** mid-flight (the Cancel button in the status message at the top right of the editor) and the
 most recent one can be **regenerated** — re-run with the identical request, swapping its output
 in place — as long as the note hasn't changed at that spot since.
 
@@ -147,15 +196,16 @@ in place — as long as the note hasn't changed at that spot since.
 re-reading a raw file: run **Digest Source into Game Context** once per source, and every
 subsequent request reuses that instead of re-uploading the file.
 
-**Import Note**, **Export Note**, **Save Snapshot**, and **Version History** live in the sidebar,
-not the command palette, since they aren't about generating text into the current cursor
-position. The **Toolkit** and **Dashboard** panels live behind their own command-bar buttons for
-the same reason.
+**Import Note** lives in the sidebar, and **Export**, **Save snapshot** and **Version history**
+in the [note menu](#the-editor), not the command palette, since they aren't about generating text into the current cursor
+position. The **Toolkit**, **Dashboard** and **Info** panels live in the
+[side panel](#the-side-panel) for the same reason. The most common play commands are also one
+keystroke away in the [composer](#playing-the-composer).
 
 ## The Toolkit
 
-Click **Toolkit** in the command bar (no note required) to open a tabbed panel of offline,
-deterministic tools — none of them call an AI provider:
+Click **Toolkit** in the command bar (no note required) to open the side panel's Toolkit tab: a
+set of offline, deterministic tools — none of them call an AI provider:
 
 - **Dice** — full expression roller (`2d6+2`, `4d6kh3`, exploding `d6!`, dice-pool
   successes/failures) plus one-tap quick buttons for d4–d20/d%.
@@ -173,7 +223,8 @@ deterministic tools — none of them call an AI provider:
 - **Tables** — rolls on custom random tables you author yourself as plain `.md`/`.txt` files in
   `<vault>/tables/`, one entry per line (optionally weighted with a trailing `^N`).
 
-Every result has its own **Insert** button, which is disabled (not hidden) when no note is open.
+Every result has its own **Insert** button, which inserts at the editor cursor and is disabled
+(not hidden) when no note is open.
 
 ## Sources and rules grounding
 
@@ -216,13 +267,13 @@ in-app editor doesn't show frontmatter.
 
 ## Import and export
 
-**Import Note** (sidebar) copies an external `.md` file into the vault as a new note. **Export
-Note** (sidebar, needs an active note) writes the current note out to any location you pick,
+**Import** (sidebar) copies an external `.md` file into the vault as a new note. **Export…**
+(note menu) writes the current note out to any location you pick,
 frontmatter included.
 
 ## Themes
 
-The sun/moon button in the command bar toggles between dark and light. Both keep the same violet
+The sun/moon icon in the header toggles between dark and light. Both keep the same violet
 accent identity; only the background/border/text neutrals change.
 
 ## Mobile (Android)
@@ -234,7 +285,7 @@ Sybyl runs on Android with a few differences from desktop:
   on first launch, and the "Change vault" button is hidden.
 - On narrow screens, the sidebar becomes an off-canvas panel (hamburger button, top-left) and the
   command-bar actions collapse behind a **⋯** button that opens a button-board menu instead of
-  wrapping onto extra rows.
+  wrapping onto extra rows. The side panel becomes a bottom sheet.
 
 ## Keyboard shortcuts
 
@@ -242,9 +293,12 @@ Sybyl runs on Android with a few differences from desktop:
 |---|---|
 | Ctrl+K | Open Command Palette |
 | Ctrl+O | Open Search (full-text file switcher) |
+| Ctrl+J | Jump to the play composer |
 | Ctrl+B | Bold selection |
 | Ctrl+I | Italic selection |
 | Ctrl+E | Code selection |
+| Ctrl+1 – Ctrl+6 | Set the line's heading level (again to remove it) |
+| Ctrl+0 | Turn the line back into plain text |
 
 ## Troubleshooting
 

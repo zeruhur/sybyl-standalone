@@ -10,7 +10,8 @@ export function insertAtCursor(view: EditorView, text: string): InsertedRange {
   const insert = `\n${text}\n`;
   view.dispatch({
     changes: { from: pos, insert },
-    selection: { anchor: pos + insert.length }
+    selection: { anchor: pos + insert.length },
+    scrollIntoView: true
   });
   view.focus();
   return { from: pos + 1, to: pos + 1 + text.length };
@@ -70,15 +71,25 @@ export function togglePrefixLine(view: EditorView, prefix: string): void {
   view.focus();
 }
 
-/** Sets the line containing the cursor to the given GFM heading level (1-6). Replaces any
- * existing heading prefix of a different level; clicking the line's current level again removes
- * it entirely (toggle off), matching togglePrefixLine's behavior for the other prefix buttons. */
+const HEADING_PREFIX = /^#{1,6}(?=\s|$)\s*/;
+
+/** The GFM heading level (1-6) of the line containing the cursor, or 0 if it isn't a heading. */
+export function getHeadingLevel(view: EditorView): number {
+  const line = view.state.doc.lineAt(view.state.selection.main.head);
+  const match = line.text.match(HEADING_PREFIX);
+  return match ? match[0].trimEnd().length : 0;
+}
+
+/** Sets the line containing the cursor to the given GFM heading level (1-6), or back to plain
+ * text for 0. Replaces any existing heading prefix of a different level; setting the line's
+ * current level again removes it entirely (toggle off), matching togglePrefixLine's behavior for
+ * the other prefix buttons. */
 export function setHeadingLevel(view: EditorView, level: number): void {
   const pos = view.state.selection.main.head;
   const line = view.state.doc.lineAt(pos);
-  const match = line.text.match(/^#{1,6}(?=\s|$)\s*/);
+  const match = line.text.match(HEADING_PREFIX);
   const isSameLevel = match ? match[0].trimEnd().length === level : false;
-  const insert = isSameLevel ? "" : `${"#".repeat(level)} `;
+  const insert = level === 0 || isSameLevel ? "" : `${"#".repeat(level)} `;
   const to = match ? line.from + match[0].length : line.from;
   view.dispatch({ changes: { from: line.from, to, insert } });
   view.focus();

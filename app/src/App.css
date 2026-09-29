@@ -8,6 +8,11 @@
   --accent: #8b7cf6;
   --accent-dim: #5a4fb0;
   --danger: #e26060;
+  --lonelog-scene: #e8b04b;
+  --beat-question: #e0c56f;
+  --beat-result: #7fd88f;
+  --beat-consequence: #6fb8e0;
+  --beat-roll: #e08f6f;
 
   font-family: "Iowan Old Style", "Georgia", "Segoe UI", system-ui, sans-serif;
   color: var(--text);
@@ -29,6 +34,11 @@
   --accent: #6d4fd1;
   --accent-dim: #5a3fc0;
   --danger: #c0392b;
+  --lonelog-scene: #a5690a;
+  --beat-question: #8a6d10;
+  --beat-result: #2f8f4e;
+  --beat-consequence: #1f6fa5;
+  --beat-roll: #a1451f;
 }
 
 /* The Lonelog syntax-highlight palette below is tuned pastel-bright for the dark editor
@@ -140,13 +150,8 @@ html, body, #root {
   border-color: transparent;
 }
 
-.import-note-button,
-.export-note-button {
+.import-note-button {
   flex-shrink: 0;
-}
-
-.sidebar-note-actions + .sidebar-note-actions button {
-  flex: 1;
 }
 
 .sidebar-section {
@@ -282,8 +287,6 @@ html, body, #root {
 
 .sidebar-toggle {
   display: none;
-  font-size: 16px;
-  padding: 4px 8px;
 }
 
 .command-menu-toggle {
@@ -302,42 +305,95 @@ html, body, #root {
   display: none;
 }
 
-.theme-toggle {
+/* Square, borderless-until-hover button holding a single icon. */
+.icon-button {
+  padding: 6px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.icon-button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-panel);
+  border-color: var(--border);
+}
+.icon-button.active {
+  color: var(--accent);
+}
+
+/* Text shown beside an icon-only button only inside the narrow-viewport ⋯ menu. */
+.menu-only-label {
+  display: none;
+}
+
+.command-bar-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+/* Header: the note title doubles as the menu for note-level actions. */
+.note-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.note-menu {
+  position: relative;
+  min-width: 0;
+}
+
+.note-menu-toggle {
+  max-width: 100%;
+  background: transparent;
+  border-color: transparent;
   font-size: 15px;
-  padding: 4px 10px;
+  font-weight: 600;
+  padding: 5px 8px;
+  color: var(--text);
+}
+.note-menu-toggle:hover:not(:disabled) {
+  background: var(--bg-panel);
+  border-color: var(--border);
+}
+
+.note-menu-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-divider {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+.popover-menu .popover-danger {
+  color: var(--danger);
 }
 
 .campaign-info-panel {
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.campaign-info-edit {
+  align-self: flex-start;
 }
 
 .campaign-info-row-wide {
   grid-column: 1 / -1;
 }
 
-.campaign-info-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 6px 20px;
-  background: none;
-  border: none;
-  border-radius: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  cursor: pointer;
-}
-
 .campaign-info-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px 20px;
-  padding: 0 20px 12px;
 }
 
 .campaign-info-row {
@@ -363,9 +419,8 @@ html, body, #root {
 }
 
 .toolkit-panel {
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
-  padding: 0 20px 16px;
+  margin: -16px -16px 0;
+  padding: 0 16px;
 }
 
 .toolkit-tabs {
@@ -373,8 +428,8 @@ html, body, #root {
   flex-wrap: nowrap;
   overflow-x: auto;
   gap: 4px;
-  margin: 0 -20px 14px;
-  padding: 10px 20px 0;
+  margin: 0 -16px 14px;
+  padding: 6px 16px 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -451,12 +506,9 @@ html, body, #root {
 }
 
 .dashboard-panel {
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
-  padding: 14px 20px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
 }
 
 .dashboard-section h4 {
@@ -533,12 +585,6 @@ html, body, #root {
   background: var(--accent);
 }
 
-@media (max-width: 720px) {
-  .dashboard-panel {
-    grid-template-columns: 1fr;
-  }
-}
-
 .format-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -555,10 +601,27 @@ html, body, #root {
   min-width: 30px;
 }
 
-.format-heading-select {
-  padding: 4px 6px;
-  font-size: 13px;
-  width: auto;
+.format-button.active {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+/* Heading picker: the level chips sit in one row instead of a list. */
+.popover-menu.popover-row {
+  flex-direction: row;
+  min-width: 0;
+  gap: 2px;
+}
+.popover-menu.popover-row button {
+  padding: 6px;
+  color: var(--text-dim);
+}
+.popover-menu.popover-row button:hover {
+  color: var(--text);
+}
+.popover-menu.popover-row button.active {
+  color: var(--accent);
+  background: var(--bg-elevated);
 }
 
 .format-divider {
@@ -572,7 +635,7 @@ html, body, #root {
   position: relative;
 }
 
-.format-more-menu {
+.popover-menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -587,7 +650,7 @@ html, body, #root {
   padding: 4px;
 }
 
-.format-more-menu button {
+.popover-menu button {
   justify-content: flex-start;
   text-align: left;
   background: transparent;
@@ -597,7 +660,7 @@ html, body, #root {
   border-radius: 4px;
 }
 
-.format-more-menu button:hover {
+.popover-menu button:hover {
   background: var(--bg-elevated);
 }
 
@@ -614,16 +677,59 @@ html, body, #root {
   margin-left: auto;
 }
 
-.status-bar {
-  padding: 6px 20px;
-  font-size: 12px;
-  color: var(--accent);
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
+/* Floating status message, top-right of the editor column. Takes no layout space. */
+.status-toast {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 15;
+  max-width: min(520px, calc(100% - 32px));
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  padding: 8px 8px 8px 12px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+.status-toast-error {
+  border-left-color: var(--danger);
+}
+
+.status-toast-message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.status-toast-close {
+  padding: 2px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+
+.status-spinner {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: status-spin 0.8s linear infinite;
+}
+
+@keyframes status-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-spinner { animation: none; }
 }
 
 .cancel-button {
@@ -728,6 +834,10 @@ html, body, #root {
 
 /* Buttons / inputs */
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-radius: 6px;
   border: 1px solid var(--border);
   padding: 7px 14px;
@@ -1096,5 +1206,303 @@ input:focus, select:focus {
 
   .kbd-hint {
     display: none;
+  }
+}
+
+/* Workspace: the editor column (toolbar, log, play composer) with the side drawer beside it. */
+.workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.editor-column {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Side drawer: Toolkit / Dashboard / Campaign Info as tabs, beside the editor instead of
+   stacked above it. Becomes a bottom sheet on narrow viewports (see the media query below). */
+.side-drawer {
+  width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+  min-height: 0;
+}
+
+.drawer-backdrop {
+  display: none;
+}
+
+.drawer-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.drawer-tab {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 10px 10px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.drawer-tab:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.drawer-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.drawer-close {
+  margin-left: auto;
+  align-self: center;
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  color: var(--text-dim);
+}
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.drawer-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.command-bar-actions button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Play composer: the one-line input under the log. A leading ?, @ or -> picks the action. */
+.play-composer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 8px 20px 12px;
+}
+
+.play-composer-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.play-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.play-chip:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.play-chip.active {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  color: #fff;
+}
+
+.play-chip-symbol {
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-weight: 700;
+}
+
+.play-chip-quiet {
+  border-color: transparent;
+}
+
+.play-composer-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 6px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.play-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.play-composer-row:focus-within {
+  border-color: var(--accent);
+}
+
+.play-composer-symbol {
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 18px;
+  text-align: center;
+}
+
+.play-composer-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 6px 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.play-composer-input:focus,
+.play-composer-input:focus-visible {
+  outline: none;
+}
+
+.play-composer-send {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  color: #fff;
+  padding: 6px 14px;
+}
+
+.play-composer-busy .play-composer-row {
+  opacity: 0.7;
+}
+
+@media (max-width: 720px) {
+  .side-drawer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    width: 100%;
+    height: 70vh;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 25;
+  }
+
+  .play-composer {
+    padding: 6px 12px 10px;
+  }
+
+  .play-composer-input {
+    font-size: 16px; /* below 16px, mobile browsers zoom the page on focus */
+  }
+}
+
+/* Formatting bubble floating over a non-empty editor selection. */
+.selection-bubble {
+  position: absolute;
+  z-index: 16;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+.selection-bubble[hidden] {
+  display: none;
+}
+.selection-bubble button {
+  padding: 6px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.selection-bubble button:hover {
+  color: var(--text);
+  background: var(--bg-elevated);
+}
+
+/* Whole-line Lonelog treatment (lonelogHighlight.ts's lineClassPlugin). */
+.editor-host .cm-lonelog-line-scene {
+  padding-top: 0.9em;
+  font-size: 1.08em;
+  border-bottom: 1px solid var(--border);
+}
+.editor-host .cm-lonelog-line {
+  border-left: 2px solid transparent;
+  padding-left: 10px;
+}
+.editor-host .cm-lonelog-line-action { border-left-color: var(--accent); }
+.editor-host .cm-lonelog-line-question { border-left-color: var(--beat-question); }
+.editor-host .cm-lonelog-line-result { border-left-color: var(--beat-result); }
+.editor-host .cm-lonelog-line-consequence { border-left-color: var(--beat-consequence); }
+.editor-host .cm-lonelog-line-roll { border-left-color: var(--beat-roll); }
+
+@media (max-width: 720px) {
+  .note-header {
+    order: 3;
+    flex: 1 1 100%;
+  }
+
+  .command-bar-divider {
+    display: none;
+  }
+
+  .command-bar-actions-open .menu-only-label {
+    display: inline;
+  }
+
+  .command-bar-actions-open .icon-button {
+    color: var(--text);
+    background: var(--bg-panel);
+    border-color: var(--border);
+  }
+
+  .status-toast {
+    left: 12px;
+    right: 12px;
+    max-width: none;
   }
 }

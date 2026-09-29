@@ -38,6 +38,9 @@ export interface SybylSettings {
   lonelogWrapCodeBlock: boolean;
   lonelogAutoIncScene: boolean;
   theme: Theme;
+  /** Whether the full formatting toolbar sits above the editor. Off by default: a selection bubble
+   * covers the common inline formats, and the Aa button in the note header toggles this. */
+  showFormatToolbar: boolean;
   vaultPath?: string;
 }
 

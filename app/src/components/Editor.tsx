@@ -6,13 +6,16 @@ import { GFM } from "@lezer/markdown";
 import { basicSetup } from "codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { lonelogHighlight } from "../lib/lonelogHighlight";
-import { wrapSelection } from "../lib/editorUtils";
+import { setHeadingLevel, wrapSelection } from "../lib/editorUtils";
 
 interface EditorProps {
   value: string;
   onChange: (value: string) => void;
   theme: "dark" | "light";
   editorRef?: React.MutableRefObject<EditorView | null>;
+  /** Called when the selection, focus, content or scroll position changes (drives the selection
+   * formatting bubble). */
+  onSelectionChange?: () => void;
 }
 
 // oneDark bundles both chrome colors and a dark-appropriate syntax HighlightStyle, already
@@ -32,11 +35,13 @@ const lightEditorTheme = EditorView.theme({
   ".cm-activeLineGutter": { backgroundColor: "#ece7de" }
 });
 
-export default function Editor({ value, onChange, theme, editorRef }: EditorProps) {
+export default function Editor({ value, onChange, theme, editorRef, onSelectionChange }: EditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
 
   // Fully remounts the EditorView when the theme flips, rather than hot-swapping a CM6
   // Compartment. A Compartment must stay bound to a single EditorView's lifecycle; sharing one
@@ -54,7 +59,12 @@ export default function Editor({ value, onChange, theme, editorRef }: EditorProp
         keymap.of([
           { key: "Mod-b", run: (v) => { wrapSelection(v, "**", "**"); return true; } },
           { key: "Mod-i", run: (v) => { wrapSelection(v, "*", "*"); return true; } },
-          { key: "Mod-e", run: (v) => { wrapSelection(v, "`", "`"); return true; } }
+          { key: "Mod-e", run: (v) => { wrapSelection(v, "`", "`"); return true; } },
+          // Ctrl+1-6 set (or toggle off) that heading level, Ctrl+0 returns the line to plain text.
+          ...[0, 1, 2, 3, 4, 5, 6].map((level) => ({
+            key: `Mod-${level}`,
+            run: (v: EditorView) => { setHeadingLevel(v, level); return true; }
+          }))
         ])
       ),
       basicSetup,
@@ -65,6 +75,14 @@ export default function Editor({ value, onChange, theme, editorRef }: EditorProp
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           onChangeRef.current(update.state.doc.toString());
+        }
+        if (update.docChanged || update.selectionSet || update.focusChanged || update.geometryChanged) {
+          onSelectionChangeRef.current?.();
+        }
+      }),
+      EditorView.domEventHandlers({
+        scroll: () => {
+          onSelectionChangeRef.current?.();
         }
       })
     ];
