@@ -62,6 +62,7 @@ import {
 } from "./lib/lonelog/formatter";
 import { getHeadingLevel, getSelection, insertAt, insertAtCursor, insertFootnote, InsertedRange, isInsideCodeBlock, Placement, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
 import { docWithoutLiveOutput, LiveOutput } from "./lib/liveOutput";
+import { formatUsage } from "./lib/usage";
 import "./App.css";
 
 const NEW_NOTE_FIELDS: PromptField[] = [
@@ -128,12 +129,12 @@ function batched(apply: (latest: string) => void) {
   };
 }
 
-/** The completion status line, noting prompt-cache hits when the provider reports them (Anthropic),
- * so it's visible that a long game_context or rulebook isn't being re-billed at full price. */
+/** The completion status line, with the generation's token usage when the provider reports it
+ * (including prompt-cache hits, so it's visible that a long game_context or rulebook isn't being
+ * re-billed at full price). */
 function doneStatus(response: GenerationResponse): string {
-  return response.cacheReadTokens
-    ? `Sybyl: done (${response.cacheReadTokens.toLocaleString()} prompt tokens from cache).`
-    : "Sybyl: done.";
+  const usage = formatUsage(response);
+  return usage ? `Sybyl: done. Tokens: ${usage}.` : "Sybyl: done.";
 }
 
 const KEYCHAIN_PROVIDERS = ["anthropic", "openai", "gemini"] as const;
@@ -861,7 +862,7 @@ export default function App() {
       const range =
         committed ?? (replaceRange ? replaceFormatted(formatted, replaceRange) : insertFormatted(formatted, placement));
       setLastGeneration({ filePath: file.path, userMessage, format, maxOutputTokens, placement, insertedText: formatted, range });
-      flashStatus(doneStatus(response));
+      flashStatus(doneStatus(response), 7000);
       succeeded = true;
     } catch (error) {
       stream.stop();
@@ -955,7 +956,7 @@ export default function App() {
       const response = await provider.generate(request, controller.signal, progress.push).finally(progress.stop);
       if (!stillActive(file)) return;
       await options.onResult(response.text);
-      flashStatus(doneStatus(response));
+      flashStatus(doneStatus(response), 7000);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         flashStatus("Sybyl: cancelled.");

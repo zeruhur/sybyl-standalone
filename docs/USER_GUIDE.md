@@ -215,6 +215,14 @@ doesn't go into the note (Digest Source, for one) show their progress in the sta
 instead. With a local model that thinks before answering, nothing appears until the thinking is
 done.
 
+When a generation finishes, the status message shows its **token usage**, for example
+`Tokens: 5,212 in (5,000 cached) · 180 out`. "In" is the whole prompt you sent: rules, game
+context, sources and recent log. The cached part is billed at a fraction of the normal price
+(Anthropic, OpenAI and Gemini all cache repeated prompts). "Out" includes any thinking the model
+did. Sybyl shows tokens, not prices, because prices differ by model and change over time. Check
+your provider's pricing page to convert. Some OpenAI-compatible servers don't report usage, and
+then only "done." appears.
+
 **Ask the Rules** and **Generate Character** prefer an already-digested `game_context` over
 re-reading a raw file: run **Digest Source into Game Context** once per source, and every
 subsequent request reuses that instead of re-uploading the file.

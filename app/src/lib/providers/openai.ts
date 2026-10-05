@@ -9,6 +9,12 @@ import { isJsonResponse, readSseData, TextProgress } from "./stream";
 
 const OPENAI_SOURCE_CHAR_LIMIT = 200_000;
 
+interface OpenAIUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+}
+
 export class OpenAIProvider implements AIProvider {
   readonly id = "openai";
   readonly name = "OpenAI";
@@ -82,7 +88,7 @@ export class OpenAIProvider implements AIProvider {
     }
 
     let text = "";
-    let usage: { prompt_tokens?: number; completion_tokens?: number } | undefined;
+    let usage: OpenAIUsage | undefined;
     for await (const data of readSseData(response)) {
       if (data === "[DONE]") break;
       const chunk = JSON.parse(data);
@@ -97,15 +103,19 @@ export class OpenAIProvider implements AIProvider {
     return this.toResponse(text, usage);
   }
 
-  private toResponse(rawText: string, usage?: { prompt_tokens?: number; completion_tokens?: number }): GenerationResponse {
+  private toResponse(rawText: string, usage?: OpenAIUsage): GenerationResponse {
     const text = rawText.trim();
     if (!text) {
       throw new Error("Provider returned an empty response.");
     }
+    // OpenAI caches long prompts automatically and counts the cached part inside prompt_tokens;
+    // split it out to match GenerationResponse (inputTokens = the part billed at full price).
+    const cached = usage?.prompt_tokens_details?.cached_tokens;
     return {
       text,
-      inputTokens: usage?.prompt_tokens,
-      outputTokens: usage?.completion_tokens
+      inputTokens: usage?.prompt_tokens !== undefined ? usage.prompt_tokens - (cached ?? 0) : undefined,
+      outputTokens: usage?.completion_tokens,
+      cacheReadTokens: cached
     };
   }
 

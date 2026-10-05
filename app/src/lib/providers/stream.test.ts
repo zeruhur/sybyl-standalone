@@ -121,3 +121,30 @@ describe("Ollama streaming", () => {
     await expect(ollama.generate(request)).rejects.toThrow("Ollama: model ran out of memory");
   });
 });
+
+describe("usage normalization", () => {
+  it("splits OpenAI's automatically cached prompt tokens out of the prompt count", async () => {
+    stubFetch(
+      sseResponse([
+        { choices: [{ delta: { content: "Hi" } }] },
+        { choices: [], usage: { prompt_tokens: 5000, completion_tokens: 40, prompt_tokens_details: { cached_tokens: 4096 } } },
+        "[DONE]"
+      ])
+    );
+    const openai = new OpenAIProvider({ apiKey: "k", defaultModel: "gpt-4o-mini", baseUrl: "https://api.openai.com/v1" });
+    expect(await openai.generate(request)).toMatchObject({ inputTokens: 904, cacheReadTokens: 4096, outputTokens: 40 });
+  });
+
+  it("splits out Gemini's cached tokens and counts its thinking as output", async () => {
+    stubFetch(
+      sseResponse([
+        {
+          candidates: [{ content: { parts: [{ text: "Hi" }] } }],
+          usageMetadata: { promptTokenCount: 3000, cachedContentTokenCount: 2048, candidatesTokenCount: 20, thoughtsTokenCount: 300 }
+        }
+      ])
+    );
+    const gemini = new GeminiProvider({ apiKey: "k", defaultModel: "gemini-2.5-pro" });
+    expect(await gemini.generate(request)).toMatchObject({ inputTokens: 952, cacheReadTokens: 2048, outputTokens: 320 });
+  });
+});

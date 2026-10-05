@@ -96,11 +96,14 @@ export interface GenerationRequest {
 
 export interface GenerationResponse {
   text: string;
-  /** Input tokens billed at full price. With prompt caching (Anthropic) this excludes the cached
-   * tokens below, so the prompt's total size is the sum of all three. */
+  // Every provider normalizes its usage report to these meanings (each counts a little differently
+  // on the wire). Undefined when the provider didn't report it.
+  /** Prompt tokens billed at full price: excludes the cache reads and writes below, so the prompt's
+   * total size is the sum of all three. */
   inputTokens?: number;
+  /** All billed output tokens, thinking included. */
   outputTokens?: number;
-  /** Prompt tokens served from the provider's cache (Anthropic only). */
+  /** Prompt tokens served from the provider's cache (Anthropic, OpenAI, Gemini). */
   cacheReadTokens?: number;
   /** Prompt tokens written to the provider's cache this request (Anthropic only). */
   cacheWriteTokens?: number;

@@ -58,7 +58,9 @@ export class GeminiProvider implements AIProvider {
 
     // Each event carries the next piece of the answer; usageMetadata is cumulative, so the last wins.
     let rawText = "";
-    let usage: { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
+    let usage:
+      | { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; cachedContentTokenCount?: number }
+      | undefined;
     for await (const data of readSseData(response)) {
       const chunk = JSON.parse(data);
       if (chunk.error) throw new Error(chunk.error.message ?? "Gemini stream failed.");
@@ -77,10 +79,19 @@ export class GeminiProvider implements AIProvider {
       throw new Error("Provider returned an empty response.");
     }
 
+    // Match GenerationResponse: the implicitly cached part of the prompt (counted inside
+    // promptTokenCount) is split out, and thinking tokens, billed as output but reported apart
+    // from the answer, are added to the output.
+    const cached = usage?.cachedContentTokenCount;
+    const output =
+      usage?.candidatesTokenCount !== undefined || usage?.thoughtsTokenCount !== undefined
+        ? (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0)
+        : undefined;
     return {
       text,
-      inputTokens: usage?.promptTokenCount,
-      outputTokens: usage?.candidatesTokenCount
+      inputTokens: usage?.promptTokenCount !== undefined ? usage.promptTokenCount - (cached ?? 0) : undefined,
+      outputTokens: output,
+      cacheReadTokens: cached
     };
   }
 
