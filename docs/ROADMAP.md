@@ -1,11 +1,11 @@
 # Roadmap
 
-Planned changes for the standalone app, as of 2026-09-27. Nothing here has been started yet. Recommended order: 1 and 2, then 3, then 5, then 4. Pick up the rest as needed.
+Planned changes for the standalone app, as of 2026-09-27. Items 1 and 2 were done on 2026-10-05. Recommended order for the rest: 3, then 5, then 4. Pick up the others as needed.
 
 ## Engineering health
 
-1. **Test suite (Vitest).** The repo has no tests or lint script. Start with the pure-logic modules: `lonelog/parser.ts`, `toolkit/diceEngine.ts`, `toolkit/oracleEngine.ts`, `lonelog/dashboard.ts`, `compileFrontmatter()`, `insertFootnote`, and the snapshot timestamp encoding in `history.ts`. A single parser test would have caught the `*...*` scene-header regression.
-2. **CI gate.** Run the tests and `tsc --noEmit` in the workflow. Release builds currently don't check correctness first.
+1. ~~**Test suite (Vitest).**~~ Done 2026-10-05: `npm test` (Vitest) runs `src/**/*.test.ts`, covering the parser, dashboard, dice/card notation, dice/oracle/card engines, cut-up, `compileFrontmatter()` (moved to `lib/frontmatter.ts`), the composer parser, `insertFootnote`/`setHeadingLevel` (jsdom), and the `history.ts` timestamp codec. Still untested: providers, `promptBuilder.ts`, `vault.ts`, and all React components.
+2. ~~**CI gate.**~~ Done 2026-10-05: `ci.yml` runs the tests after `tsc`, and `release.yml` has a `verify` job (tsc + tests) that `create-release` depends on. Node bumped 20 → 22 in both, since Vitest 5 requires it.
 3. **External-change detection.** Notes are plain `.md` files that users may also edit in Obsidian, VS Code, or through a sync tool. Autosave currently overwrites those edits without warning. At minimum, compare the file's modified time before writing and warn on a conflict.
 
 ## LLM layer

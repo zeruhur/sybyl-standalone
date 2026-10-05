@@ -21,11 +21,11 @@ function historyDirFor(vaultPath: string, noteName: string): string {
 // ISO timestamps contain colons, which Windows filenames disallow. Encoding always produces the
 // fixed shape "YYYY-MM-DDTHH-MM-SS.sssZ" (only the two time-of-day colons are swapped for
 // hyphens), so decoding can reverse it with one anchored regex rather than guessing.
-function encodeTimestamp(date: Date): string {
+export function encodeTimestamp(date: Date): string {
   return date.toISOString().replace(/:/g, "-");
 }
 
-function decodeTimestamp(encoded: string): Date {
+export function decodeTimestamp(encoded: string): Date {
   const match = encoded.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2}\.\d{3}Z)$/);
   if (!match) return new Date(NaN);
   return new Date(`${match[1]}T${match[2]}:${match[3]}:${match[4]}`);

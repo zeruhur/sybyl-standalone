@@ -176,6 +176,7 @@ Full details, the bugs found/fixed, and porting notes are in the `project-standa
 
 ## Verifying changes
 
+- Tests: `cd app && npm test` (Vitest, `src/**/*.test.ts`; also run in CI and as the `verify` gate in `release.yml`). Tests sit next to the module they cover. Make randomness deterministic by stubbing `Math.random` (`src/test/random.ts` has `queueDice()`). Tests that need a real `EditorView` opt into jsdom with a `// @vitest-environment jsdom` header. Modules that import Tauri plugins need `vi.mock` before they're imported (see `history.test.ts`). Keep testable logic out of `App.tsx`: that's why `compileFrontmatter()`/`todayIsoDate()` now live in `lib/frontmatter.ts`.
 - Typecheck: `cd app && npx tsc --noEmit`
 - Build frontend only: `cd app && npm run build`
 - Rust-only check (fast): `cd app/src-tauri && cargo check`

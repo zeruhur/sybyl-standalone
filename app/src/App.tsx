@@ -47,7 +47,7 @@ import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
 import { GenerationRequest, NoteFrontMatter, ProviderID, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
 import { buildRequest, buildSystemPrompt } from "./lib/promptBuilder";
 import { getProvider } from "./lib/providers";
-import { parseLonelogContext } from "./lib/lonelog/parser";
+import { compileFrontmatter, todayIsoDate } from "./lib/frontmatter";
 import { inferMimeType, resolveSourcesForRequest } from "./lib/sourceUtils";
 import {
   formatAdventureSeed,
@@ -100,24 +100,6 @@ function parseLonelogOracleResponse(text: string): { result: string; interpretat
   const result = lines.find((line) => line.startsWith("->"))?.replace(/^->\s*/, "") ?? "Unclear";
   const interpretation = lines.filter((line) => !line.startsWith("->")).join("\n");
   return { result, interpretation };
-}
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/** Auto-compiles the Lonelog standard campaign-header fields (lonelog.md §5.1) that can be
- * derived from the log body: last_update always refreshes, pcs is re-derived from the most
- * recent [PC:...] tag(s) found in the log. */
-function compileFrontmatter(body: string, contextDepth: number): Partial<NoteFrontMatter> {
-  const ctx = parseLonelogContext(body, contextDepth);
-  const derivedPcs = ctx.pcState.length
-    ? ctx.pcState.map((state) => `${state.split("|")[0].trim()} [PC:${state}]`).join(", ")
-    : undefined;
-  return {
-    last_update: todayIsoDate(),
-    ...(derivedPcs ? { pcs: derivedPcs } : {})
-  };
 }
 
 const KEYCHAIN_PROVIDERS = ["anthropic", "openai", "gemini"] as const;
