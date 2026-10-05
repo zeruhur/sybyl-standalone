@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { acceptsTemperature, AnthropicProvider } from "./anthropic";
 import { GenerationRequest, ResolvedSource } from "../types";
+import { anthropicEvents, sseResponse } from "../../test/stream";
 
 const provider = new AnthropicProvider({ apiKey: "test-key", defaultModel: "claude-sonnet-4-5-20250929" });
 
-/** Stubs fetch with a canned Messages API response and returns the parsed request body. */
+/** Stubs fetch with a canned streamed Messages API response and returns the parsed request body. */
 function mockMessages(usage: Record<string, number> = { input_tokens: 10, output_tokens: 5 }) {
-  const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
-    ok: true,
-    json: async () => ({ content: [{ type: "text", text: "=> The door holds." }], usage })
-  }));
+  const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+    sseResponse(anthropicEvents(["=> The door ", "holds."], usage))
+  );
   vi.stubGlobal("fetch", fetchMock);
   return () => JSON.parse(fetchMock.mock.calls[0][1].body as string);
 }
@@ -97,7 +97,7 @@ describe("temperature", () => {
 
 describe("empty responses", () => {
   function mockStop(stop_reason: string) {
-    vi.stubGlobal("fetch", async () => ({ ok: true, json: async () => ({ content: [{ type: "thinking", thinking: "" }], stop_reason }) }));
+    vi.stubGlobal("fetch", async () => sseResponse(anthropicEvents([], {}, stop_reason)));
   }
 
   it("explains a token budget spent on thinking", async () => {
@@ -108,5 +108,23 @@ describe("empty responses", () => {
   it("explains a refusal", async () => {
     mockStop("refusal");
     await expect(provider.generate(request())).rejects.toThrow("Anthropic declined this request.");
+  });
+});
+
+describe("streaming", () => {
+  it("asks for a stream and reports the text so far as it arrives", async () => {
+    const body = mockMessages();
+    const seen: string[] = [];
+    const response = await provider.generate(request(), undefined, (text) => seen.push(text));
+    expect(body().stream).toBe(true);
+    expect(seen).toEqual(["=> The door ", "=> The door holds."]);
+    expect(response.text).toBe("=> The door holds.");
+  });
+
+  it("surfaces an error event sent mid-stream", async () => {
+    vi.stubGlobal("fetch", async () =>
+      sseResponse([anthropicEvents(["=> The"])[0], { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }])
+    );
+    await expect(provider.generate(request())).rejects.toThrow("Overloaded");
   });
 });

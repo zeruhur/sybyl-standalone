@@ -5,6 +5,7 @@ import {
   UploadedFileInfo
 } from "../types";
 import { AIProvider, truncateSourceText } from "./base";
+import { isJsonResponse, readSseData, TextProgress } from "./stream";
 
 const OPENAI_SOURCE_CHAR_LIMIT = 200_000;
 
@@ -14,7 +15,7 @@ export class OpenAIProvider implements AIProvider {
 
   constructor(private readonly config: OpenAIProviderConfig) {}
 
-  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal, onText?: TextProgress): Promise<GenerationResponse> {
     this.ensureConfigured();
     const baseUrl = this.config.baseUrl.replace(/\/$/, "");
     const model = request.model || this.config.defaultModel;
@@ -51,6 +52,12 @@ export class OpenAIProvider implements AIProvider {
     if (!isReasoningModel) {
       body.temperature = request.temperature;
     }
+    body.stream = true;
+    // Usage in the final chunk is opt-in. Only OpenAI itself is sent the flag: some compatible
+    // servers reject fields they don't know.
+    if (/^https:\/\/api\.openai\.com\b/.test(baseUrl)) {
+      body.stream_options = { include_usage: true };
+    }
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
@@ -66,16 +73,39 @@ export class OpenAIProvider implements AIProvider {
       throw new Error(await this.extractError(response));
     }
 
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content?.trim?.() ?? "";
+    // Some OpenAI-compatible servers ignore `stream` and answer with one JSON document.
+    if (isJsonResponse(response)) {
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content ?? "";
+      if (content) onText?.(content);
+      return this.toResponse(content, data.usage);
+    }
+
+    let text = "";
+    let usage: { prompt_tokens?: number; completion_tokens?: number } | undefined;
+    for await (const data of readSseData(response)) {
+      if (data === "[DONE]") break;
+      const chunk = JSON.parse(data);
+      if (chunk.error) throw new Error(chunk.error.message ?? "OpenAI stream failed.");
+      const delta = chunk.choices?.[0]?.delta?.content;
+      if (delta) {
+        text += delta;
+        onText?.(text);
+      }
+      if (chunk.usage) usage = chunk.usage;
+    }
+    return this.toResponse(text, usage);
+  }
+
+  private toResponse(rawText: string, usage?: { prompt_tokens?: number; completion_tokens?: number }): GenerationResponse {
+    const text = rawText.trim();
     if (!text) {
       throw new Error("Provider returned an empty response.");
     }
-
     return {
       text,
-      inputTokens: data.usage?.prompt_tokens,
-      outputTokens: data.usage?.completion_tokens
+      inputTokens: usage?.prompt_tokens,
+      outputTokens: usage?.completion_tokens
     };
   }
 

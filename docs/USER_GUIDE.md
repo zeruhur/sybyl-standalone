@@ -207,6 +207,14 @@ Every AI-backed command can be **cancelled** mid-flight (the Cancel button in th
 most recent one can be **regenerated** — re-run with the identical request, swapping its output
 in place — as long as the note hasn't changed at that spot since.
 
+Responses **stream in** as they're written: the text appears in the note while it's being
+generated, and you can keep typing elsewhere in the note meanwhile. Until it finishes, that text
+is provisional. It isn't saved, it isn't an undo step, and cancelling (or an error) removes it.
+Once finished, the whole result is a single change that one Ctrl+Z undoes. Commands whose result
+doesn't go into the note (Digest Source, for one) show their progress in the status message
+instead. With a local model that thinks before answering, nothing appears until the thinking is
+done.
+
 **Ask the Rules** and **Generate Character** prefer an already-digested `game_context` over
 re-reading a raw file: run **Digest Source into Game Context** once per source, and every
 subsequent request reuses that instead of re-uploading the file.

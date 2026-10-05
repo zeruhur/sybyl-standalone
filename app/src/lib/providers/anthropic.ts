@@ -5,6 +5,14 @@ import {
   UploadedFileInfo
 } from "../types";
 import { AIProvider } from "./base";
+import { readSseData, TextProgress } from "./stream";
+
+/** Usage arrives in pieces (input side in message_start, output in message_delta); later values win. */
+function mergeUsage(into: Record<string, number>, usage: Record<string, unknown> | undefined): void {
+  for (const [key, value] of Object.entries(usage ?? {})) {
+    if (typeof value === "number") into[key] = value;
+  }
+}
 
 // Prompt caching (5-minute TTL; every hit refreshes it, which suits the gaps between plays). Two
 // breakpoints at the stability boundaries: the system prompt (rules, Lonelog addendum, digested
@@ -27,7 +35,7 @@ export class AnthropicProvider implements AIProvider {
 
   constructor(private readonly config: AnthropicProviderConfig) {}
 
-  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal, onText?: TextProgress): Promise<GenerationResponse> {
     this.ensureConfigured();
     const model = request.model || this.config.defaultModel;
     const content: Array<Record<string, unknown>> = [];
@@ -66,6 +74,7 @@ export class AnthropicProvider implements AIProvider {
       body: JSON.stringify({
         model,
         max_tokens: request.maxOutputTokens,
+        stream: true,
         temperature: acceptsTemperature(model) ? request.temperature : undefined,
         // An empty text block is a 400, so an empty system prompt is omitted instead.
         system: request.systemPrompt
@@ -80,18 +89,37 @@ export class AnthropicProvider implements AIProvider {
       throw new Error(await this.extractError(response));
     }
 
-    const data = await response.json();
-    const text = (data.content ?? [])
-      .map((item: { text?: string }) => item.text ?? "")
-      .join("")
-      .trim();
+    // Accumulate the same shape a non-streamed response has, so both end in toResponse().
+    let text = "";
+    let stopReason: string | undefined;
+    const usage: Record<string, number> = {};
+    for await (const data of readSseData(response)) {
+      const event = JSON.parse(data);
+      if (event.type === "message_start") {
+        mergeUsage(usage, event.message?.usage);
+      } else if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+        text += event.delta.text ?? "";
+        onText?.(text);
+      } else if (event.type === "message_delta") {
+        stopReason = event.delta?.stop_reason ?? stopReason;
+        mergeUsage(usage, event.usage);
+      } else if (event.type === "error") {
+        // Errors after the 200 (e.g. overloaded) arrive as an event mid-stream.
+        throw new Error(event.error?.message ?? "Anthropic stream failed.");
+      }
+    }
+    return this.toResponse(text, stopReason, usage);
+  }
+
+  private toResponse(rawText: string, stopReason: string | undefined, usage: Record<string, number>): GenerationResponse {
+    const text = rawText.trim();
     if (!text) {
       // Newer models think before answering, and thinking counts against max_tokens, so a small
       // budget can run out before any visible text.
-      if (data.stop_reason === "max_tokens") {
+      if (stopReason === "max_tokens") {
         throw new Error("Anthropic ran out of output tokens before answering. Raise the max output tokens in Settings.");
       }
-      if (data.stop_reason === "refusal") {
+      if (stopReason === "refusal") {
         throw new Error("Anthropic declined this request.");
       }
       throw new Error("Provider returned an empty response.");
@@ -99,10 +127,10 @@ export class AnthropicProvider implements AIProvider {
 
     return {
       text,
-      inputTokens: data.usage?.input_tokens,
-      outputTokens: data.usage?.output_tokens,
-      cacheReadTokens: data.usage?.cache_read_input_tokens,
-      cacheWriteTokens: data.usage?.cache_creation_input_tokens
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      cacheReadTokens: usage.cache_read_input_tokens,
+      cacheWriteTokens: usage.cache_creation_input_tokens
     };
   }
 

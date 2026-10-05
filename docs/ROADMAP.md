@@ -1,6 +1,6 @@
 # Roadmap
 
-Planned changes for the standalone app, as of 2026-09-27. Items 1-3 and 5 were done on 2026-10-05. Recommended next: 4. Pick up the others as needed.
+Planned changes for the standalone app, as of 2026-09-27. Items 1-5 were done on 2026-10-05/06. Pick up the rest as needed.
 
 ## Engineering health
 
@@ -10,7 +10,7 @@ Planned changes for the standalone app, as of 2026-09-27. Items 1-3 and 5 were d
 
 ## LLM layer
 
-4. **Streaming responses.** Every provider's `generate()` waits for the full response. Streaming touches all four providers, `GenerationResponse`, `runGeneration`/`runRawGeneration`/`executeGeneration` in `App.tsx`, and the insert helpers, which need incremental insertion. The range tracking used by Regenerate must also update as text streams in.
+4. ~~**Streaming responses.**~~ Done 2026-10-06. `generate(request, signal, onText)` streams on all four providers through `providers/stream.ts`: SSE for Anthropic/OpenAI/Gemini, NDJSON for Ollama, plus a JSON fallback for OpenAI-compatible servers that ignore `stream`. `lib/liveOutput.ts` writes the output into the editor as it arrives. Each update re-formats the whole text so far and replaces its own span. A CM6 state field maps the span through the user's edits. Updates stay out of undo history and out of autosave (`docWithoutLiveOutput`). The final text is committed as one undoable insert, and Regenerate streams over the old output. Raw commands (Digest Source etc.) show a character count in the status line.
 5. ~~**Anthropic prompt caching.**~~ Done 2026-10-05. There are two `cache_control` breakpoints (5-minute TTL) in `providers/anthropic.ts`: one on the system prompt (rules, Lonelog addendum, `game_context`), one on the last attached source. The varying question comes after both. Also fixed an invalidator: the system prompt used `pcs`, which `compileFrontmatter` rewrites with each PC's current state on every save, so any HP/stress change broke the cache. It now carries PC names only, and the state still goes in the per-request Lonelog context. Cache reads show in the completion status ("N prompt tokens from cache"). Prefixes below the model's minimum (1024 tokens for the default Sonnet 4.5) don't cache, so this pays off once a note has a digested `game_context` or sources.
 6. **Token and cost visibility.** Show token usage for each generation in the status bar.
 

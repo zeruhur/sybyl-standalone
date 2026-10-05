@@ -60,7 +60,8 @@ import {
   formatSuggestConsequence,
   LonelogFormatOptions
 } from "./lib/lonelog/formatter";
-import { appendToNote, getHeadingLevel, getSelection, insertAtCursor, insertBelowSelection, insertFootnote, InsertedRange, isInsideCodeBlock, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
+import { getHeadingLevel, getSelection, insertAt, insertAtCursor, insertFootnote, InsertedRange, isInsideCodeBlock, Placement, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
+import { docWithoutLiveOutput, LiveOutput } from "./lib/liveOutput";
 import "./App.css";
 
 const NEW_NOTE_FIELDS: PromptField[] = [
@@ -103,6 +104,30 @@ function parseLonelogOracleResponse(text: string): { result: string; interpretat
   return { result, interpretation };
 }
 
+const STREAM_BATCH_MS = 60;
+
+/** Collapses a burst of streamed updates into at most one call per STREAM_BATCH_MS, always with the
+ * latest value. `stop` drops a pending call, so nothing fires after the stream has ended. */
+function batched(apply: (latest: string) => void) {
+  let latest = "";
+  let timer: number | undefined;
+  return {
+    push(value: string) {
+      latest = value;
+      if (timer === undefined) {
+        timer = window.setTimeout(() => {
+          timer = undefined;
+          apply(latest);
+        }, STREAM_BATCH_MS);
+      }
+    },
+    stop() {
+      window.clearTimeout(timer);
+      timer = undefined;
+    }
+  };
+}
+
 /** The completion status line, noting prompt-cache hits when the provider reports them (Anthropic),
  * so it's visible that a long game_context or rulebook isn't being re-billed at full price. */
 function doneStatus(response: GenerationResponse): string {
@@ -128,7 +153,6 @@ async function migrateAndLoadApiKey(account: string, legacyKey: string): Promise
   }
 }
 
-type Placement = "cursor" | "below-selection" | "end-of-note";
 
 /** A note that changed on disk outside Sybyl while Sybyl had its own changes to write. */
 interface NoteConflict {
@@ -394,7 +418,7 @@ export default function App() {
   function conflictMine(c: NoteConflict): VaultFile {
     const live = activeFileRef.current;
     if (live?.path !== c.mine.path) return c.mine;
-    return { ...live, body: editorViewRef.current?.state.doc.toString() ?? body };
+    return { ...live, body: currentDoc() };
   }
 
   /** Settles a conflict. The losing side is always saved as a snapshot first, so either choice can
@@ -552,7 +576,7 @@ export default function App() {
     });
     if (!target) return;
     try {
-      const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+      const currentBody = currentDoc();
       await exportNoteTo(target, file.fm, currentBody);
       flashStatus(`Exported to ${target}`);
     } catch (error) {
@@ -699,12 +723,19 @@ export default function App() {
     return { wrapInCodeBlock: !noWrap && (settings.lonelogWrapCodeBlock ?? true) };
   }
 
+  /** The open note's body as the editor holds it, minus any output still streaming in (that's
+   * provisional until committed; see lib/liveOutput.ts). */
+  function currentDoc(): string {
+    const view = editorViewRef.current;
+    return view ? docWithoutLiveOutput(view.state) : body;
+  }
+
   /** Writes a frontmatter patch for the active file to disk and updates in-memory state. */
   async function updateActiveFrontmatter(patch: Partial<NoteFrontMatter>) {
     const file = activeFileRef.current;
     if (!file) return;
     const nextFm = { ...file.fm, ...patch };
-    const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+    const currentBody = currentDoc();
     const updated: VaultFile = { ...file, fm: nextFm, body: currentBody };
     // In memory first: on a conflict the patch (e.g. a freshly digested game_context) then rides
     // along on the user's side instead of being lost.
@@ -716,13 +747,8 @@ export default function App() {
     const file = activeFileRef.current;
     const view = editorViewRef.current;
     if (view) {
-      const range =
-        placement === "below-selection"
-          ? insertBelowSelection(view, formatted)
-          : placement === "end-of-note"
-          ? appendToNote(view, formatted)
-          : insertAtCursor(view, formatted);
-      const nextBody = view.state.doc.toString();
+      const range = insertAt(view, placement, formatted);
+      const nextBody = docWithoutLiveOutput(view.state);
       setBody(nextBody);
       if (file) persistBody(file, nextBody);
       return range;
@@ -742,7 +768,7 @@ export default function App() {
     if (!view) return null;
     view.dispatch({ changes: { from: range.from, to: range.to, insert: formatted } });
     view.focus();
-    const nextBody = view.state.doc.toString();
+    const nextBody = docWithoutLiveOutput(view.state);
     setBody(nextBody);
     if (file) persistBody(file, nextBody);
     return { from: range.from, to: range.from + formatted.length };
@@ -796,26 +822,51 @@ export default function App() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // Streamed output is written into the editor as it arrives, re-formatted whole each time (the
+    // formatters work on the full response: fences, line prefixes, oracle parsing). Updates are
+    // batched, since every write re-renders the editor.
+    let live: LiveOutput | null = null;
+    let insideCodeBlock = false;
+    const stream = batched((textSoFar: string) => {
+      const view = editorViewRef.current;
+      if (!view || activeFileRef.current?.path !== file.path) return;
+      if (!live) {
+        // Where the output starts is decided by the cursor when the first text arrives.
+        insideCodeBlock = isInsideCodeBlock(view);
+        const formatted = format(textSoFar, insideCodeBlock);
+        live = replaceRange ? LiveOutput.replace(view, replaceRange, formatted) : LiveOutput.insert(view, placement, formatted);
+      } else {
+        live.write(view, format(textSoFar, insideCodeBlock));
+      }
+    });
+
     setLoading(true);
     showStatus("Sybyl: generating...");
     try {
       const provider = getProvider(settings, providerIdFor(file.fm));
-      const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+      const currentBody = currentDoc();
       const request: GenerationRequest = {
         ...buildRequest(file.fm, userMessage, settings, maxOutputTokens, currentBody),
         model: file.fm.model
       };
-      const response = await provider.generate(request, controller.signal);
+      const response = await provider.generate(request, controller.signal, stream.push);
+      stream.stop();
       if (!stillActive(file)) return false;
-      // Read after the await: the cursor may have moved while the request was in flight.
       const view = editorViewRef.current;
-      const insideCodeBlock = view ? isInsideCodeBlock(view) : false;
+      if (!live) insideCodeBlock = view ? isInsideCodeBlock(view) : false;
       const formatted = format(response.text, insideCodeBlock);
-      const range = replaceRange ? replaceFormatted(formatted, replaceRange) : insertFormatted(formatted, placement);
+      // Commit swaps the streamed text for the final output as one undoable change. Without a live
+      // span (nothing streamed, or the editor was remounted mid-stream) it's a plain insert.
+      const committed = live && view ? (live as LiveOutput).commit(view, formatted) : null;
+      const range =
+        committed ?? (replaceRange ? replaceFormatted(formatted, replaceRange) : insertFormatted(formatted, placement));
       setLastGeneration({ filePath: file.path, userMessage, format, maxOutputTokens, placement, insertedText: formatted, range });
       flashStatus(doneStatus(response));
       succeeded = true;
     } catch (error) {
+      stream.stop();
+      const view = editorViewRef.current;
+      if (live && view) (live as LiveOutput).cancel(view);
       if (error instanceof DOMException && error.name === "AbortError") {
         flashStatus("Sybyl: cancelled.");
       } else {
@@ -883,6 +934,12 @@ export default function App() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // These results don't go into the note as they stream (a digest becomes frontmatter, a
+    // character sheet is inserted whole), so progress is shown in the status line instead.
+    const progress = batched((textSoFar: string) => {
+      showStatus(`Sybyl: generating... ${textSoFar.length.toLocaleString()} characters so far`);
+    });
+
     setLoading(true);
     showStatus("Sybyl: generating...");
     try {
@@ -895,7 +952,7 @@ export default function App() {
         maxOutputTokens: options.maxOutputTokens,
         model: file.fm.model
       };
-      const response = await provider.generate(request, controller.signal);
+      const response = await provider.generate(request, controller.signal, progress.push).finally(progress.stop);
       if (!stillActive(file)) return;
       await options.onResult(response.text);
       flashStatus(doneStatus(response));
@@ -1367,7 +1424,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
   async function cmdSaveSnapshot() {
     const file = activeFileRef.current;
     if (!vaultPath || !file) return;
-    const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+    const currentBody = currentDoc();
     await saveSnapshot(vaultPath, { ...file, body: currentBody });
     flashStatus("Snapshot saved.");
   }
@@ -1388,7 +1445,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     setHistoryOpen(false);
     discardPendingSave(file.path);
     try {
-      const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+      const currentBody = currentDoc();
       await saveSnapshot(vaultPath, { ...file, body: currentBody });
       const restored = await readVaultFile(snapshot.path);
       const nextFm: NoteFrontMatter = { ...file.fm, ...restored.fm };

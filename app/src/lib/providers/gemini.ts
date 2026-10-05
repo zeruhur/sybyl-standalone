@@ -5,6 +5,7 @@ import {
   UploadedFileInfo
 } from "../types";
 import { AIProvider } from "./base";
+import { readSseData, TextProgress } from "./stream";
 
 export class GeminiProvider implements AIProvider {
   readonly id = "gemini";
@@ -12,11 +13,11 @@ export class GeminiProvider implements AIProvider {
 
   constructor(private readonly config: GeminiProviderConfig) {}
 
-  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal, onText?: TextProgress): Promise<GenerationResponse> {
     this.ensureConfigured();
     const model = request.model || this.config.defaultModel;
     const endpoint =
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(this.config.apiKey)}`;
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(this.config.apiKey)}`;
 
     const parts: Array<Record<string, unknown>> = [];
     for (const source of request.resolvedSources ?? []) {
@@ -55,20 +56,31 @@ export class GeminiProvider implements AIProvider {
       throw new Error(await this.extractError(response, "Gemini"));
     }
 
-    const data = await response.json();
-    const text = (data.candidates?.[0]?.content?.parts ?? [])
-      .map((part: { text?: string }) => part.text ?? "")
-      .join("")
-      .trim();
+    // Each event carries the next piece of the answer; usageMetadata is cumulative, so the last wins.
+    let rawText = "";
+    let usage: { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
+    for await (const data of readSseData(response)) {
+      const chunk = JSON.parse(data);
+      if (chunk.error) throw new Error(chunk.error.message ?? "Gemini stream failed.");
+      const piece = (chunk.candidates?.[0]?.content?.parts ?? [])
+        .map((part: { text?: string; thought?: boolean }) => (part.thought ? "" : part.text ?? ""))
+        .join("");
+      if (piece) {
+        rawText += piece;
+        onText?.(rawText);
+      }
+      if (chunk.usageMetadata) usage = chunk.usageMetadata;
+    }
 
+    const text = rawText.trim();
     if (!text) {
       throw new Error("Provider returned an empty response.");
     }
 
     return {
       text,
-      inputTokens: data.usageMetadata?.promptTokenCount,
-      outputTokens: data.usageMetadata?.candidatesTokenCount
+      inputTokens: usage?.promptTokenCount,
+      outputTokens: usage?.candidatesTokenCount
     };
   }
 

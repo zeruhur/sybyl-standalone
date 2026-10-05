@@ -5,6 +5,7 @@ import {
   UploadedFileInfo
 } from "../types";
 import { AIProvider, truncateSourceText } from "./base";
+import { readJsonLines, TextProgress } from "./stream";
 
 interface OllamaTagsResponse {
   models?: Array<{ name?: string }>;
@@ -16,7 +17,7 @@ export class OllamaProvider implements AIProvider {
 
   constructor(private readonly config: OllamaProviderConfig) {}
 
-  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<GenerationResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal, onText?: TextProgress): Promise<GenerationResponse> {
     const baseUrl = this.config.baseUrl.replace(/\/$/, "");
     const model = request.model || this.config.defaultModel;
     const sourceBlocks = (request.resolvedSources ?? [])
@@ -30,7 +31,7 @@ export class OllamaProvider implements AIProvider {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model,
-          stream: false,
+          stream: true,
           options: {
             temperature: request.temperature,
             num_predict: request.maxOutputTokens
@@ -59,16 +60,29 @@ export class OllamaProvider implements AIProvider {
       throw new Error(`Ollama not reachable at ${baseUrl}. Is it running?`);
     }
 
-    const data = await response.json();
-    const text = data.message?.content?.trim?.() ?? "";
+    // One JSON object per line; the last (`done: true`) carries the token counts.
+    let rawText = "";
+    let counts: { prompt_eval_count?: number; eval_count?: number } = {};
+    for await (const line of readJsonLines(response)) {
+      const chunk = line as { error?: string; done?: boolean; message?: { content?: string } } & typeof counts;
+      if (chunk.error) throw new Error(`Ollama: ${chunk.error}`);
+      const piece = chunk.message?.content ?? "";
+      if (piece) {
+        rawText += piece;
+        onText?.(rawText);
+      }
+      if (chunk.done) counts = chunk;
+    }
+
+    const text = rawText.trim();
     if (!text) {
       throw new Error("Provider returned an empty response.");
     }
 
     return {
       text,
-      inputTokens: data.prompt_eval_count,
-      outputTokens: data.eval_count
+      inputTokens: counts.prompt_eval_count,
+      outputTokens: counts.eval_count
     };
   }
 
