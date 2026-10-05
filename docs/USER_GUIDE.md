@@ -156,6 +156,21 @@ Restoring is itself reversible: before overwriting anything, Sybyl saves one mor
 whatever was on screen, so you can always step back from a restore too. Deleting a note also
 deletes its snapshot history.
 
+### Editing notes outside Sybyl
+
+Notes are plain `.md` files, so you can also edit them in Obsidian, another text editor, or
+through a sync tool. Sybyl checks before every save that the file on disk is still the version it
+last opened or saved, so it never silently overwrites an outside edit:
+
+- Opening a note always reads it fresh from disk.
+- When you switch back to the Sybyl window, the open note is checked. If you have no unsaved
+  edits, the outside version simply loads, with a short message saying so.
+- If the note changed outside Sybyl while you also had unsaved edits, Sybyl asks which version to
+  keep: **Keep my version** or **Load the outside version**. Either way, the version that loses is
+  saved to Version history first, so you can still get it back.
+- If the note was deleted or moved outside Sybyl while it was open, Sybyl asks whether to
+  **Save it again** or **Close it**. Closing keeps your version in the note's `.history/` folder.
+
 ## Commands
 
 Open the palette with **Commands** (Ctrl+K) — it needs an active note. Type to filter the list,

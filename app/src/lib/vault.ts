@@ -92,8 +92,7 @@ export async function listVaultFiles(vaultPath: string): Promise<VaultFile[]> {
   return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function readVaultFile(path: string): Promise<VaultFile> {
-  const raw = await readTextFile(path);
+function parseNote(path: string, raw: string): VaultFile {
   const parsed = matter(raw);
   const name = path.split(/[\\/]/).pop() ?? path;
   return {
@@ -104,6 +103,51 @@ export async function readVaultFile(path: string): Promise<VaultFile> {
   };
 }
 
+export async function readVaultFile(path: string): Promise<VaultFile> {
+  return parseNote(path, await readTextFile(path));
+}
+
+// Notes are plain files that may also be edited outside Sybyl (Obsidian, a text editor, a sync
+// tool). This holds each note's raw text as of Sybyl's last open or write, and a guarded write
+// compares the disk against it first, so an outside edit is caught instead of silently
+// overwritten. Only openVaultFile and writes record it, never list reads: the sidebar re-reads
+// every note, and recording there would make a stale open editor look current.
+const knownContent = new Map<string, string>();
+
+/** Thrown by a guarded write when the note changed (`disk` is its current state) or was deleted
+ * (`disk` is null) outside Sybyl since Sybyl last opened or wrote it. */
+export class ExternalChangeError extends Error {
+  readonly path: string;
+  readonly disk: VaultFile | null;
+
+  constructor(path: string, disk: VaultFile | null) {
+    const name = path.split(/[\\/]/).pop() ?? path;
+    super(disk ? `${name} was changed outside Sybyl.` : `${name} was deleted outside Sybyl.`);
+    this.name = "ExternalChangeError";
+    this.path = path;
+    this.disk = disk;
+  }
+}
+
+export type ExternalChange = { kind: "unchanged" } | { kind: "modified"; disk: VaultFile } | { kind: "deleted" };
+
+/** Reads a note for editing and records it as the baseline for external-change checks. */
+export async function openVaultFile(path: string): Promise<VaultFile> {
+  const raw = await readTextFile(path);
+  knownContent.set(path, raw);
+  return parseNote(path, raw);
+}
+
+/** Whether a note changed on disk since Sybyl last opened or wrote it. A note Sybyl never opened
+ * has no baseline and counts as unchanged. */
+export async function checkExternalChange(path: string): Promise<ExternalChange> {
+  const known = knownContent.get(path);
+  if (known === undefined) return { kind: "unchanged" };
+  if (!(await exists(path))) return { kind: "deleted" };
+  const raw = await readTextFile(path);
+  return raw === known ? { kind: "unchanged" } : { kind: "modified", disk: parseNote(path, raw) };
+}
+
 function withoutUndefined(fm: NoteFrontMatter): Record<string, unknown> {
   return Object.fromEntries(Object.entries(fm).filter(([, value]) => value !== undefined));
 }
@@ -112,12 +156,26 @@ export function stringifyNote(fm: NoteFrontMatter, body: string): string {
   return matter.stringify(body, withoutUndefined(fm));
 }
 
-export async function writeVaultFile(path: string, fm: NoteFrontMatter, body: string): Promise<void> {
-  await writeTextFile(path, stringifyNote(fm, body));
+/** Writes a note, refusing with ExternalChangeError if it changed outside Sybyl since Sybyl last
+ * opened or wrote it. `force` skips the check, for when the user chose to overwrite. */
+export async function writeVaultFile(
+  path: string,
+  fm: NoteFrontMatter,
+  body: string,
+  options: { force?: boolean } = {}
+): Promise<void> {
+  if (!options.force) {
+    const change = await checkExternalChange(path);
+    if (change.kind !== "unchanged") throw new ExternalChangeError(path, change.kind === "modified" ? change.disk : null);
+  }
+  const raw = stringifyNote(fm, body);
+  await writeTextFile(path, raw);
+  knownContent.set(path, raw);
 }
 
 export async function deleteVaultFile(path: string): Promise<void> {
   await remove(path);
+  knownContent.delete(path);
 }
 
 /** Writes the given frontmatter+body to an arbitrary path outside the vault. */
@@ -146,7 +204,9 @@ export async function createVaultFile(
     path = joinPath(vaultPath, `${base}-${suffix}.md`);
     suffix += 1;
   }
-  await writeVaultFile(path, fm, body);
+  // A fresh path by construction (checked just above), so a stale baseline left by a deleted note
+  // that once had this name must not block it.
+  await writeVaultFile(path, fm, body, { force: true });
   return readVaultFile(path);
 }
 
@@ -190,6 +250,6 @@ export async function importNoteFile(vaultPath: string, pickedPath: string): Pro
     session_type: "campaign",
     ...(parsed.data as NoteFrontMatter)
   };
-  await writeVaultFile(destPath, fm, parsed.content);
+  await writeVaultFile(destPath, fm, parsed.content, { force: true });
   return readVaultFile(destPath);
 }
