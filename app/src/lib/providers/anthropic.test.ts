@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AnthropicProvider } from "./anthropic";
+import { acceptsTemperature, AnthropicProvider } from "./anthropic";
 import { GenerationRequest, ResolvedSource } from "../types";
 
 const provider = new AnthropicProvider({ apiKey: "test-key", defaultModel: "claude-sonnet-4-5-20250929" });
@@ -71,5 +71,42 @@ describe("AnthropicProvider prompt caching", () => {
     mockMessages({ input_tokens: 12, output_tokens: 30, cache_read_input_tokens: 4000, cache_creation_input_tokens: 0 });
     const response = await provider.generate(request());
     expect(response).toMatchObject({ inputTokens: 12, outputTokens: 30, cacheReadTokens: 4000, cacheWriteTokens: 0 });
+  });
+});
+
+describe("temperature", () => {
+  it.each(["claude-sonnet-4-5-20250929", "claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-3-7-sonnet-20250219"])(
+    "is sent to %s",
+    (model) => expect(acceptsTemperature(model)).toBe(true)
+  );
+
+  it.each(["claude-opus-4-7", "claude-opus-4-8", "claude-opus-5", "claude-opus-5-5", "claude-sonnet-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-some-future-model"])(
+    "is omitted for %s",
+    (model) => expect(acceptsTemperature(model)).toBe(false)
+  );
+
+  it("is left out of the request body for a model that rejects it", async () => {
+    const body = mockMessages();
+    await provider.generate(request({ model: "claude-opus-5-5" }));
+    expect(body()).not.toHaveProperty("temperature");
+    const body2 = mockMessages();
+    await provider.generate(request());
+    expect(body2().temperature).toBe(0.9);
+  });
+});
+
+describe("empty responses", () => {
+  function mockStop(stop_reason: string) {
+    vi.stubGlobal("fetch", async () => ({ ok: true, json: async () => ({ content: [{ type: "thinking", thinking: "" }], stop_reason }) }));
+  }
+
+  it("explains a token budget spent on thinking", async () => {
+    mockStop("max_tokens");
+    await expect(provider.generate(request())).rejects.toThrow(/Raise the max output tokens/);
+  });
+
+  it("explains a refusal", async () => {
+    mockStop("refusal");
+    await expect(provider.generate(request())).rejects.toThrow("Anthropic declined this request.");
   });
 });

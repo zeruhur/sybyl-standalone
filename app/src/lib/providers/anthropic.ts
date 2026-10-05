@@ -13,6 +13,14 @@ import { AIProvider } from "./base";
 // Prefixes below the model's minimum (512-4096 tokens) silently don't cache, at no extra cost.
 const CACHE_BREAKPOINT = { type: "ephemeral" } as const;
 
+/** Whether a model takes a `temperature`. Opus 4.7+, Sonnet 5+ and Fable reject sampling parameters
+ * with a 400, so this is an allowlist of the older families that still accept them (3.x, and the
+ * 4.x line up to 4.6, incl. Haiku 4.5). A model not listed gets no temperature at all, which every
+ * model accepts, so a newly released model can't break the same way. */
+export function acceptsTemperature(model: string): boolean {
+  return /^claude-(?:3|(?:opus|sonnet|haiku)-4(?:-[0-6])?(?:-\d{8})?$)/.test(model);
+}
+
 export class AnthropicProvider implements AIProvider {
   readonly id = "anthropic";
   readonly name = "Anthropic";
@@ -58,7 +66,7 @@ export class AnthropicProvider implements AIProvider {
       body: JSON.stringify({
         model,
         max_tokens: request.maxOutputTokens,
-        temperature: request.temperature,
+        temperature: acceptsTemperature(model) ? request.temperature : undefined,
         // An empty text block is a 400, so an empty system prompt is omitted instead.
         system: request.systemPrompt
           ? [{ type: "text", text: request.systemPrompt, cache_control: CACHE_BREAKPOINT }]
@@ -78,6 +86,14 @@ export class AnthropicProvider implements AIProvider {
       .join("")
       .trim();
     if (!text) {
+      // Newer models think before answering, and thinking counts against max_tokens, so a small
+      // budget can run out before any visible text.
+      if (data.stop_reason === "max_tokens") {
+        throw new Error("Anthropic ran out of output tokens before answering. Raise the max output tokens in Settings.");
+      }
+      if (data.stop_reason === "refusal") {
+        throw new Error("Anthropic declined this request.");
+      }
       throw new Error("Provider returned an empty response.");
     }
 

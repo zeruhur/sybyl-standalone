@@ -280,6 +280,11 @@ only: `provider:` (`anthropic`, `openai`, `gemini`, or `ollama`), `model:`, `tem
 `language:` (the response language). Edit the `.md` file in another editor to set them, since the
 in-app editor doesn't show frontmatter.
 
+Newer Claude models (Opus 4.7 and later, Sonnet 5 and later, Fable) don't accept a temperature,
+so Sybyl leaves it out for them and the temperature setting has no effect. Those models also
+think before answering, and that thinking counts against the max output tokens. If a request
+fails with "ran out of output tokens", raise that setting.
+
 ## Import and export
 
 **Import** (sidebar) copies an external `.md` file into the vault as a new note. **Export…**
