@@ -45,7 +45,7 @@ import {
 import { cutUpText, CutUpMode } from "./lib/toolkit/cutup";
 import { keychainGet, keychainSet } from "./lib/keychain";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
-import { GenerationRequest, NoteFrontMatter, ProviderID, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
+import { GenerationRequest, GenerationResponse, NoteFrontMatter, ProviderID, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
 import { buildRequest, buildSystemPrompt } from "./lib/promptBuilder";
 import { getProvider } from "./lib/providers";
 import { compileFrontmatter, todayIsoDate } from "./lib/frontmatter";
@@ -101,6 +101,14 @@ function parseLonelogOracleResponse(text: string): { result: string; interpretat
   const result = lines.find((line) => line.startsWith("->"))?.replace(/^->\s*/, "") ?? "Unclear";
   const interpretation = lines.filter((line) => !line.startsWith("->")).join("\n");
   return { result, interpretation };
+}
+
+/** The completion status line, noting prompt-cache hits when the provider reports them (Anthropic),
+ * so it's visible that a long game_context or rulebook isn't being re-billed at full price. */
+function doneStatus(response: GenerationResponse): string {
+  return response.cacheReadTokens
+    ? `Sybyl: done (${response.cacheReadTokens.toLocaleString()} prompt tokens from cache).`
+    : "Sybyl: done.";
 }
 
 const KEYCHAIN_PROVIDERS = ["anthropic", "openai", "gemini"] as const;
@@ -805,7 +813,7 @@ export default function App() {
       const formatted = format(response.text, insideCodeBlock);
       const range = replaceRange ? replaceFormatted(formatted, replaceRange) : insertFormatted(formatted, placement);
       setLastGeneration({ filePath: file.path, userMessage, format, maxOutputTokens, placement, insertedText: formatted, range });
-      flashStatus("Sybyl: done.");
+      flashStatus(doneStatus(response));
       succeeded = true;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -890,7 +898,7 @@ export default function App() {
       const response = await provider.generate(request, controller.signal);
       if (!stillActive(file)) return;
       await options.onResult(response.text);
-      flashStatus("Sybyl: done.");
+      flashStatus(doneStatus(response));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         flashStatus("Sybyl: cancelled.");

@@ -15,9 +15,19 @@ When generating consequences, oracle interpretations, or scene text:
 Generate only the symbol-prefixed content lines. The formatter handles wrapping.
 `.trim();
 
+/** PC names for the system prompt, without their current state. `pcs` is re-derived from the
+ * latest `[PC:Name|state]` tags on every save, so its state part changes whenever HP or stress does,
+ * and any change to the system prompt invalidates the Anthropic prompt cache for everything after
+ * it (game_context included). The current state still reaches the model through the per-request
+ * Lonelog context in the user message. */
+function pcNames(fm: NoteFrontMatter): string | undefined {
+  if (!fm.pcs) return fm.pc_name;
+  return fm.pcs.replace(/\s*\[PC:[^\]]*\]/g, "").trim() || fm.pc_name;
+}
+
 function buildBasePrompt(fm: NoteFrontMatter): string {
   const ruleset = fm.ruleset ?? "the game";
-  const pcLabel = fm.pcs ?? fm.pc_name;
+  const pcLabel = pcNames(fm);
   const pcs = pcLabel ? `Player character: ${pcLabel}` : "";
   const genre = fm.genre ? `Genre: ${fm.genre}` : "";
   const tone = fm.tone ? `Tone: ${fm.tone}` : "";

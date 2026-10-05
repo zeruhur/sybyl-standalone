@@ -6,6 +6,13 @@ import {
 } from "../types";
 import { AIProvider } from "./base";
 
+// Prompt caching (5-minute TTL; every hit refreshes it, which suits the gaps between plays). Two
+// breakpoints at the stability boundaries: the system prompt (rules, Lonelog addendum, digested
+// game_context; stable per note) and the last attached source (rulebooks resent unchanged on every
+// Ask the Rules / Generate Character). The per-request user message comes after both, uncached.
+// Prefixes below the model's minimum (512-4096 tokens) silently don't cache, at no extra cost.
+const CACHE_BREAKPOINT = { type: "ephemeral" } as const;
+
 export class AnthropicProvider implements AIProvider {
   readonly id = "anthropic";
   readonly name = "Anthropic";
@@ -35,6 +42,9 @@ export class AnthropicProvider implements AIProvider {
       }
     }
 
+    if (content.length > 0) {
+      content[content.length - 1].cache_control = CACHE_BREAKPOINT;
+    }
     content.push({ type: "text", text: request.userMessage });
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -49,7 +59,10 @@ export class AnthropicProvider implements AIProvider {
         model,
         max_tokens: request.maxOutputTokens,
         temperature: request.temperature,
-        system: request.systemPrompt,
+        // An empty text block is a 400, so an empty system prompt is omitted instead.
+        system: request.systemPrompt
+          ? [{ type: "text", text: request.systemPrompt, cache_control: CACHE_BREAKPOINT }]
+          : undefined,
         messages: [{ role: "user", content }]
       }),
       signal
@@ -71,7 +84,9 @@ export class AnthropicProvider implements AIProvider {
     return {
       text,
       inputTokens: data.usage?.input_tokens,
-      outputTokens: data.usage?.output_tokens
+      outputTokens: data.usage?.output_tokens,
+      cacheReadTokens: data.usage?.cache_read_input_tokens,
+      cacheWriteTokens: data.usage?.cache_creation_input_tokens
     };
   }
 

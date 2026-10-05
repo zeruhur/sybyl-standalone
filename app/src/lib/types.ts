@@ -96,8 +96,14 @@ export interface GenerationRequest {
 
 export interface GenerationResponse {
   text: string;
+  /** Input tokens billed at full price. With prompt caching (Anthropic) this excludes the cached
+   * tokens below, so the prompt's total size is the sum of all three. */
   inputTokens?: number;
   outputTokens?: number;
+  /** Prompt tokens served from the provider's cache (Anthropic only). */
+  cacheReadTokens?: number;
+  /** Prompt tokens written to the provider's cache this request (Anthropic only). */
+  cacheWriteTokens?: number;
 }
 
 export interface UploadedFileInfo {
