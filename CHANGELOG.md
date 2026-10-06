@@ -15,6 +15,12 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
   first, each with an Insert button, so a result isn't lost just because you didn't insert it
   right away. It keeps the last 200 and is cleared when you close the app (or with Clear).
 
+### Changed
+- The side panel no longer shows horizontal scrollbars. The Toolkit's tools wrap onto a second row
+  as chips, so every tool stays visible, on a phone too. The panel's Campaign Info tab is now
+  called **Info**, matching its header button.
+- Scrollbars and drop-down menus follow the light/dark theme, and scrollbars are thinner.
+
 ### Fixed
 - Two saves to the same note in quick succession (for example, clicking the Chaos Factor arrows
   quickly) could wrongly report the note as "changed outside Sybyl". Saves to a note now run one

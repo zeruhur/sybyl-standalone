@@ -1,4 +1,6 @@
 :root {
+  /* Native controls (scrollbars, select dropdowns) follow the theme instead of drawing light. */
+  color-scheme: dark;
   --bg: #17181c;
   --bg-elevated: #1e2025;
   --bg-panel: #24262c;
@@ -25,6 +27,7 @@
 /* Warm-parchment light theme — pairs with the serif "old book" font; the violet
    accent carries through both themes as the throughline, only the neutrals flip. */
 :root[data-theme="light"] {
+  color-scheme: light;
   --bg: #f6f3ee;
   --bg-elevated: #ffffff;
   --bg-panel: #ece7de;
@@ -60,6 +63,9 @@
 
 * {
   box-sizing: border-box;
+  /* Thin scrollbars in the theme's own colors everywhere (editor, sidebar, drawer, modals). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
 :focus-visible {
@@ -423,23 +429,22 @@ html, body, #root {
   padding: 0 16px;
 }
 
+/* Tools as wrapping chips rather than a sideways-scrolling tab strip: every tool stays visible
+   (and tappable on a phone) however narrow the drawer is. */
 .toolkit-tabs {
   display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0 -16px 14px;
-  padding: 6px 16px 0;
+  padding: 10px 16px 12px;
   border-bottom: 1px solid var(--border);
 }
 
 .toolkit-tab {
-  flex-shrink: 0;
   background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: 6px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
   font-size: 12px;
   color: var(--text-dim);
   white-space: nowrap;
@@ -451,7 +456,8 @@ html, body, #root {
 
 .toolkit-tab.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .toolkit-section h4 {
@@ -1271,12 +1277,13 @@ input:focus, select:focus {
   gap: 2px;
   padding: 0 8px;
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
   flex-shrink: 0;
 }
 
 .drawer-tab {
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;

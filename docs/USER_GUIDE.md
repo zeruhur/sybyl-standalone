@@ -119,7 +119,7 @@ closes it.
 
 ## Campaign Info panel
 
-The **Campaign Info** tab of the side panel (the **Info** button) shows every campaign
+The **Info** tab of the side panel (the **Info** button) shows every campaign
 frontmatter field at a glance: title, type, player, ruleset, genre, PCs, dates, tools, themes,
 tone, notes, and the digested game context. Since the editor never renders frontmatter directly,
 this is the only place to confirm a frontmatter edit actually landed. Its **Edit campaign info**

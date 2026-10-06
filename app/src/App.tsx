@@ -1885,7 +1885,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
               { id: "dashboard", label: "Dashboard", content: activeFile ? <DashboardPanel body={body} /> : null },
               {
                 id: "info",
-                label: "Campaign Info",
+                label: "Info",
                 content: activeFile ? <CampaignInfoPanel fm={activeFile.fm} onEdit={cmdEditCampaignInfo} /> : null
               }
             ]}
