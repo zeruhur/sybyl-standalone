@@ -16,7 +16,7 @@ Planned changes for the standalone app, as of 2026-09-27. Items 1-7 were done on
 
 ## Play features
 
-7. ~~**Persist the Chaos Factor per note.**~~ Done 2026-10-06 as the `chaos_factor` frontmatter field. It's read through `normalizeChaosFactor()` (oracleEngine.ts: rounds and clamps to 1-9, defaults to 5) and written by the Toolkit's CF input via `updateActiveFrontmatter`. Campaign Info shows it. With no note open, the value is session-only as before. It still changes only when the user changes it. This also fixed a race that came before this item: overlapping writes to one note could report Sybyl's own write as an outside change. `writeVaultFile` now queues writes per path.
+7. ~~**Persist the Chaos Factor per note.**~~ Done 2026-10-06 as the `chaos_factor` frontmatter field. It's read through `normalizeChaosFactor()` (oracleEngine.ts: rounds and clamps to 1-9, defaults to 5) and written by the Toolkit's CF input or the Edit Campaign Info dialog (a 1-9 select) via `updateActiveFrontmatter`. Campaign Info shows it. With no note open, the value is session-only as before. It still changes only when the user changes it. This also fixed a race that came before this item: overlapping writes to one note could report Sybyl's own write as an outside change. `writeVaultFile` now queues writes per path.
 8. **Toolkit roll/draw log.** Keep a scrollable history for the session. Today a result is lost unless it's inserted into a note.
 9. **Persist card deck state per note**, so a campaign's shuffled deck survives a restart.
 10. **Dice grammar Part II.** Start with reroll, compounding, and min/max.

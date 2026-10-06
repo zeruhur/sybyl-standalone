@@ -1198,6 +1198,12 @@ Keep it concise — 4 bullet points, one short sentence each.`;
           { value: "campaign", label: "Campaign" },
           { value: "one_shot", label: "One-shot" }
         ]
+      },
+      {
+        key: "chaos_factor",
+        label: "Chaos Factor (Toolkit oracle)",
+        defaultValue: String(normalizeChaosFactor(fm.chaos_factor)),
+        options: [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ value: String(n), label: String(n) }))
       }
     ];
     openModal("Edit Campaign Info", fields, async (values) => {
@@ -1207,6 +1213,12 @@ Keep it concise — 4 bullet points, one short sentence each.`;
         patch[key] = values[key]?.trim();
       }
       patch.session_type = values.session_type === "one_shot" ? "one_shot" : "campaign";
+      // Written only when changed or already stored, so saving other fields doesn't add it to
+      // every note that has never touched the oracle.
+      const chaosFactor = normalizeChaosFactor(values.chaos_factor);
+      if (fm.chaos_factor !== undefined || chaosFactor !== normalizeChaosFactor(fm.chaos_factor)) {
+        patch.chaos_factor = chaosFactor;
+      }
       await updateActiveFrontmatter(patch);
       flashStatus("Campaign info updated.");
     });
