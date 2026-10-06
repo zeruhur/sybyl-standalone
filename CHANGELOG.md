@@ -6,6 +6,8 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 
 ## Unreleased
 
+## v0.17.0 - 2026-10-06
+
 ### Added
 - The Toolkit oracle's Chaos Factor is saved with each note (as `chaos_factor` in its frontmatter),
   so every campaign keeps its own across restarts. Change it from the Toolkit's Oracle tab or in
