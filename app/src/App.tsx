@@ -32,7 +32,7 @@ import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
 import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
 import { generateWord } from "./lib/toolkit/wordGenerators";
 import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
-import { askOracle, formatOracleResult } from "./lib/toolkit/oracleEngine";
+import { askOracle, formatOracleResult, normalizeChaosFactor } from "./lib/toolkit/oracleEngine";
 import {
   createCustomDeckSession,
   CustomDeckSession,
@@ -1503,8 +1503,25 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     insertFormatted(text, "cursor");
   }
 
+  /** The Toolkit oracle's Chaos Factor: the open note's own (saved as `chaos_factor`), or a
+   * session-only value while no note is open, since the Toolkit works without one. */
+  const chaosFactor = activeFile ? normalizeChaosFactor(activeFile.fm.chaos_factor) : oracleChaosFactor;
+
+  function setChaosFactor(value: number) {
+    // The number input reports transient values while typing (empty, 0, 12...); keep only valid ones.
+    if (!Number.isInteger(value) || value < 1 || value > 9) return;
+    if (!activeFileRef.current) {
+      setOracleChaosFactor(value);
+      return;
+    }
+    if (value === chaosFactor) return;
+    updateActiveFrontmatter({ chaos_factor: value }).catch((error) => {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
   function toolkitAskOracle(likelihoodId: string): string | undefined {
-    const result = askOracle(likelihoodId, oracleChaosFactor);
+    const result = askOracle(likelihoodId, chaosFactor);
     if (!result) {
       flashStatus(`Sybyl: unknown oracle likelihood "${likelihoodId}".`);
       return undefined;
@@ -1824,8 +1841,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
                     onRollTable={toolkitRollTable}
                     onRefreshTables={() => vaultPath && refreshTableFiles(vaultPath)}
                     onInsert={toolkitInsert}
-                    chaosFactor={oracleChaosFactor}
-                    onSetChaosFactor={setOracleChaosFactor}
+                    chaosFactor={chaosFactor}
+                    onSetChaosFactor={setChaosFactor}
                     onAskOracle={toolkitAskOracle}
                     deckFolders={deckFolders}
                     customDeckSession={customDeckSession}

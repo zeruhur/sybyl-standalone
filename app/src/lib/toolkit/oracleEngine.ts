@@ -56,6 +56,17 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export const DEFAULT_CHAOS_FACTOR = 5;
+
+/** A usable Chaos Factor from a stored value: a note's `chaos_factor` may be missing or hand-edited
+ * into anything (a string, a decimal, out of range). Numbers are rounded and clamped to 1-9;
+ * anything else gives the default. */
+export function normalizeChaosFactor(value: unknown): number {
+  const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  if (typeof n !== "number" || !Number.isFinite(n)) return DEFAULT_CHAOS_FACTOR;
+  return clamp(Math.round(n), 1, 9);
+}
+
 /** Rolls a Yes/No oracle answer for the given likelihood, shifted by the chaos factor (1-9,
  * higher = more volatile/random). Returns `undefined` if `likelihoodId` isn't recognized. */
 export function askOracle(likelihoodId: string, chaosFactor: number): OracleResult | undefined {

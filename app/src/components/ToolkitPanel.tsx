@@ -177,7 +177,7 @@ export default function ToolkitPanel({
               <option key={l.id} value={l.id}>{l.label}</option>
             ))}
           </select>
-          <label>
+          <label title={canInsert ? "Chaos Factor, saved with this note" : "Chaos Factor for this session; open a note to save it with the note"}>
             CF
             <input
               type="number"

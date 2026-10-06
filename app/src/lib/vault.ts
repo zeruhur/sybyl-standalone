@@ -158,12 +158,28 @@ export function stringifyNote(fm: NoteFrontMatter, body: string): string {
 
 /** Writes a note, refusing with ExternalChangeError if it changed outside Sybyl since Sybyl last
  * opened or wrote it. `force` skips the check, for when the user chose to overwrite. */
-export async function writeVaultFile(
+export function writeVaultFile(
   path: string,
   fm: NoteFrontMatter,
   body: string,
   options: { force?: boolean } = {}
 ): Promise<void> {
+  // Writes to one note run one at a time. Overlapping, a second write's check could read the first
+  // one's content off disk before knownContent caught up, and report Sybyl's own write as an
+  // outside change (e.g. clicking the Chaos Factor spinner quickly, or autosave meeting a
+  // frontmatter patch).
+  const previous = writeQueue.get(path) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(() => writeNow(path, fm, body, options));
+  writeQueue.set(path, next);
+  void next.finally(() => {
+    if (writeQueue.get(path) === next) writeQueue.delete(path);
+  }).catch(() => {});
+  return next;
+}
+
+const writeQueue = new Map<string, Promise<void>>();
+
+async function writeNow(path: string, fm: NoteFrontMatter, body: string, options: { force?: boolean }): Promise<void> {
   if (!options.force) {
     const change = await checkExternalChange(path);
     if (change.kind !== "unchanged") throw new ExternalChangeError(path, change.kind === "modified" ? change.disk : null);

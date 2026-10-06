@@ -8,7 +8,11 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
     if (raw === undefined) throw new Error(`ENOENT: ${path}`);
     return raw;
   },
-  writeTextFile: async (path: string, raw: string) => void disk.set(path, raw),
+  // Like the real IPC call: the file is on disk before the write's promise resolves.
+  writeTextFile: async (path: string, raw: string) => {
+    disk.set(path, raw);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  },
   exists: async (path: string) => disk.has(path),
   remove: async (path: string) => void disk.delete(path)
 }));
@@ -83,5 +87,28 @@ describe("external-change detection", () => {
     disk.delete(PATH);
     const created = await createVaultFile("/vault", { pc_name: "Mara" }, "");
     expect(created.path).toBe(PATH);
+  });
+});
+
+describe("overlapping writes", () => {
+  it("runs them one at a time, so Sybyl's own write is never mistaken for an outside edit", async () => {
+    // Like quick spinner clicks: each write starts after the previous one has reached disk but
+    // before it has reported back.
+    const writes: Promise<void>[] = [];
+    for (const cf of [1, 2, 3, 4, 5]) {
+      writes.push(writeVaultFile(PATH, { chaos_factor: cf }, "@ Log\n"));
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    await expect(Promise.all(writes)).resolves.toBeDefined();
+    expect(disk.get(PATH)).toContain("chaos_factor: 5");
+  });
+
+  it("keeps going after a write fails", async () => {
+    editOutside("@ Edited in Obsidian\n");
+    const failed = writeVaultFile(PATH, {}, "@ Mine\n");
+    const forced = writeVaultFile(PATH, {}, "@ Mine, forced\n", { force: true });
+    await expect(failed).rejects.toBeInstanceOf(ExternalChangeError);
+    await expect(forced).resolves.toBeUndefined();
+    expect(disk.get(PATH)).toContain("@ Mine, forced");
   });
 });

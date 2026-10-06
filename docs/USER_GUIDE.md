@@ -242,7 +242,9 @@ set of offline, deterministic tools — none of them call an AI provider:
   successes/failures) plus one-tap quick buttons for d4–d20/d%.
 - **Oracle** — a deterministic Yes/No oracle: pick a likelihood (Impossible…Certain) and a
   1–9 Chaos Factor, and it rolls 1d100 against a computed threshold, flagging exceptional results
-  and random events.
+  and random events. The Chaos Factor is saved with the open note (as `chaos_factor` in its
+  frontmatter, also shown in Campaign Info), so each campaign keeps its own. It starts at 5 and
+  only changes when you change it. With no note open, it applies to the current session only.
 - **Cards** — standard 52-card or full Tarot deck with a draw/discard pile that auto-reshuffles
   when empty; Tarot reversals are decided per draw.
 - **Custom Deck** — draws images from `<vault>/decks/<name>/` (any folder of image files you add

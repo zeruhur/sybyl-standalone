@@ -1,4 +1,5 @@
 import { NoteFrontMatter } from "../lib/types";
+import { normalizeChaosFactor } from "../lib/toolkit/oracleEngine";
 
 interface CampaignInfoPanelProps {
   fm: NoteFrontMatter;
@@ -18,11 +19,14 @@ const CAMPAIGN_INFO_FIELDS: { key: keyof NoteFrontMatter; label: string; wide?: 
   { key: "themes", label: "Themes" },
   { key: "tone", label: "Tone" },
   { key: "notes", label: "Notes" },
+  { key: "chaos_factor", label: "Chaos Factor" },
   { key: "game_context", label: "Game context", wide: true }
 ];
 
 function displayValue(fm: NoteFrontMatter, key: keyof NoteFrontMatter): string {
   if (key === "session_type") return fm.session_type === "one_shot" ? "One-shot" : "Campaign";
+  // Always has an effective value (the default until set), which is what the Toolkit oracle uses.
+  if (key === "chaos_factor") return String(normalizeChaosFactor(fm.chaos_factor));
   return fm[key] ? String(fm[key]) : "—";
 }
 

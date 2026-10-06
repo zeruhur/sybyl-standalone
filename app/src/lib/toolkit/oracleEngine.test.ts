@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { askOracle, formatOracleResult } from "./oracleEngine";
+import { askOracle, formatOracleResult, normalizeChaosFactor } from "./oracleEngine";
 
 /** Makes the oracle's 1d100 land on `roll`; later Math.random calls get `fallback`. */
 function rollD100(roll: number, fallback = 0) {
@@ -78,5 +78,21 @@ describe("formatOracleResult", () => {
     rollD100(33);
     const text = formatOracleResult(askOracle("fifty_fifty", 5)!);
     expect(text.split("\n")[1]).toMatch(/^Random Event: Event Focus: .+ — Subject: .+$/);
+  });
+});
+
+describe("normalizeChaosFactor", () => {
+  it("defaults when unset or not a number", () => {
+    for (const value of [undefined, null, "", "high", Number.NaN, {}]) {
+      expect(normalizeChaosFactor(value)).toBe(5);
+    }
+  });
+
+  it("rounds and clamps hand-edited values", () => {
+    expect(normalizeChaosFactor(7)).toBe(7);
+    expect(normalizeChaosFactor("3")).toBe(3);
+    expect(normalizeChaosFactor(6.6)).toBe(7);
+    expect(normalizeChaosFactor(0)).toBe(1);
+    expect(normalizeChaosFactor(12)).toBe(9);
   });
 });
