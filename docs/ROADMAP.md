@@ -1,18 +1,18 @@
 # Roadmap
 
-Planned changes for the standalone app, as of 2026-09-27. Nothing here has been started yet. Recommended order: 1 and 2, then 3, then 5, then 4. Pick up the rest as needed.
+Planned changes for the standalone app, as of 2026-09-27. Items 1-6 were done on 2026-10-05/06. Pick up the rest as needed.
 
 ## Engineering health
 
-1. **Test suite (Vitest).** The repo has no tests or lint script. Start with the pure-logic modules: `lonelog/parser.ts`, `toolkit/diceEngine.ts`, `toolkit/oracleEngine.ts`, `lonelog/dashboard.ts`, `compileFrontmatter()`, `insertFootnote`, and the snapshot timestamp encoding in `history.ts`. A single parser test would have caught the `*...*` scene-header regression.
-2. **CI gate.** Run the tests and `tsc --noEmit` in the workflow. Release builds currently don't check correctness first.
-3. **External-change detection.** Notes are plain `.md` files that users may also edit in Obsidian, VS Code, or through a sync tool. Autosave currently overwrites those edits without warning. At minimum, compare the file's modified time before writing and warn on a conflict.
+1. ~~**Test suite (Vitest).**~~ Done 2026-10-05: `npm test` (Vitest) runs `src/**/*.test.ts`, covering the parser, dashboard, dice/card notation, dice/oracle/card engines, cut-up, `compileFrontmatter()` (moved to `lib/frontmatter.ts`), the composer parser, `insertFootnote`/`setHeadingLevel` (jsdom), and the `history.ts` timestamp codec. Still untested: providers, `promptBuilder.ts`, `vault.ts`, and all React components.
+2. ~~**CI gate.**~~ Done 2026-10-05: `ci.yml` runs the tests after `tsc`, and `release.yml` has a `verify` job (tsc + tests) that `create-release` depends on. Node bumped 20 → 22 in both, since Vitest 5 requires it.
+3. ~~**External-change detection.**~~ Done 2026-10-05, by comparing content rather than modified time. `vault.ts` keeps each note's raw text as of Sybyl's last open or write. `writeVaultFile` re-reads the file first and throws `ExternalChangeError` on a mismatch. `App.tsx` shows `ConflictModal` (keep mine / load the outside version, with the losing side snapshotted first). Opening a note now reads it fresh from disk, where it used to use the copy cached in the sidebar list. Window focus reloads the open note silently when there are no unsaved edits. No live file watcher: an outside edit is noticed on focus or on the next save.
 
 ## LLM layer
 
-4. **Streaming responses.** Every provider's `generate()` waits for the full response. Streaming touches all four providers, `GenerationResponse`, `runGeneration`/`runRawGeneration`/`executeGeneration` in `App.tsx`, and the insert helpers, which need incremental insertion. The range tracking used by Regenerate must also update as text streams in.
-5. **Anthropic prompt caching.** `game_context` and digested sources are resent unchanged on every request. Adding `cache_control` to the system prompt in `providers/anthropic.ts` would cut cost and latency.
-6. **Token and cost visibility.** Show token usage for each generation in the status bar.
+4. ~~**Streaming responses.**~~ Done 2026-10-06. `generate(request, signal, onText)` streams on all four providers through `providers/stream.ts`: SSE for Anthropic/OpenAI/Gemini, NDJSON for Ollama, plus a JSON fallback for OpenAI-compatible servers that ignore `stream`. `lib/liveOutput.ts` writes the output into the editor as it arrives. Each update re-formats the whole text so far and replaces its own span. A CM6 state field maps the span through the user's edits. Updates stay out of undo history and out of autosave (`docWithoutLiveOutput`). The final text is committed as one undoable insert, and Regenerate streams over the old output. Raw commands (Digest Source etc.) show a character count in the status line.
+5. ~~**Anthropic prompt caching.**~~ Done 2026-10-05. There are two `cache_control` breakpoints (5-minute TTL) in `providers/anthropic.ts`: one on the system prompt (rules, Lonelog addendum, `game_context`), one on the last attached source. The varying question comes after both. Also fixed an invalidator: the system prompt used `pcs`, which `compileFrontmatter` rewrites with each PC's current state on every save, so any HP/stress change broke the cache. It now carries PC names only, and the state still goes in the per-request Lonelog context. Cache reads show in the completion status ("N prompt tokens from cache"). Prefixes below the model's minimum (1024 tokens for the default Sonnet 4.5) don't cache, so this pays off once a note has a digested `game_context` or sources.
+6. ~~**Token and cost visibility.**~~ Done 2026-10-06, tokens only. The done status reads `Tokens: N in (M cached) · K out` (`lib/usage.ts`). Providers now normalize usage to one meaning: `inputTokens` excludes cached tokens, which OpenAI and Gemini count inside their prompt totals, and `outputTokens` includes thinking, which Gemini reports separately. No prices: per-model price tables go stale, and a wrong cost figure is worse than none. If wanted later, a user-entered price per model in Settings would avoid the staleness problem.
 
 ## Play features
 

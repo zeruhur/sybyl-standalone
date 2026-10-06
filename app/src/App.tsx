@@ -13,6 +13,7 @@ import SourceManagerModal from "./components/SourceManagerModal";
 import FormatToolbar from "./components/FormatToolbar";
 import CampaignInfoPanel from "./components/CampaignInfoPanel";
 import ConfirmModal from "./components/ConfirmModal";
+import ConflictModal from "./components/ConflictModal";
 import ToolkitPanel from "./components/ToolkitPanel";
 import DashboardPanel from "./components/DashboardPanel";
 import VersionHistoryModal from "./components/VersionHistoryModal";
@@ -25,7 +26,7 @@ import StatusToast from "./components/StatusToast";
 import { HeadingPickerHandle } from "./components/HeadingPicker";
 import { BookOpen, CaseSensitive, Command, Dices, Ellipsis, Info, LayoutDashboard, Menu, Moon, Search, Settings, Sun } from "lucide-react";
 import { ComposerIntent } from "./lib/composer";
-import { createVaultFile, deleteVaultFile, exportNoteTo, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
+import { checkExternalChange, createVaultFile, deleteVaultFile, exportNoteTo, ExternalChangeError, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, openVaultFile, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
 import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
 import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
@@ -44,10 +45,10 @@ import {
 import { cutUpText, CutUpMode } from "./lib/toolkit/cutup";
 import { keychainGet, keychainSet } from "./lib/keychain";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./lib/settings";
-import { GenerationRequest, NoteFrontMatter, ProviderID, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
+import { GenerationRequest, GenerationResponse, NoteFrontMatter, ProviderID, SessionType, SourceRef, SybylSettings, VaultFile } from "./lib/types";
 import { buildRequest, buildSystemPrompt } from "./lib/promptBuilder";
 import { getProvider } from "./lib/providers";
-import { parseLonelogContext } from "./lib/lonelog/parser";
+import { compileFrontmatter, todayIsoDate } from "./lib/frontmatter";
 import { inferMimeType, resolveSourcesForRequest } from "./lib/sourceUtils";
 import {
   formatAdventureSeed,
@@ -59,7 +60,9 @@ import {
   formatSuggestConsequence,
   LonelogFormatOptions
 } from "./lib/lonelog/formatter";
-import { appendToNote, getHeadingLevel, getSelection, insertAtCursor, insertBelowSelection, insertFootnote, InsertedRange, isInsideCodeBlock, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
+import { getHeadingLevel, getSelection, insertAt, insertAtCursor, insertFootnote, InsertedRange, isInsideCodeBlock, Placement, setHeadingLevel, togglePrefixLine, wrapSelection } from "./lib/editorUtils";
+import { docWithoutLiveOutput, LiveOutput } from "./lib/liveOutput";
+import { formatUsage } from "./lib/usage";
 import "./App.css";
 
 const NEW_NOTE_FIELDS: PromptField[] = [
@@ -102,22 +105,36 @@ function parseLonelogOracleResponse(text: string): { result: string; interpretat
   return { result, interpretation };
 }
 
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+const STREAM_BATCH_MS = 60;
+
+/** Collapses a burst of streamed updates into at most one call per STREAM_BATCH_MS, always with the
+ * latest value. `stop` drops a pending call, so nothing fires after the stream has ended. */
+function batched(apply: (latest: string) => void) {
+  let latest = "";
+  let timer: number | undefined;
+  return {
+    push(value: string) {
+      latest = value;
+      if (timer === undefined) {
+        timer = window.setTimeout(() => {
+          timer = undefined;
+          apply(latest);
+        }, STREAM_BATCH_MS);
+      }
+    },
+    stop() {
+      window.clearTimeout(timer);
+      timer = undefined;
+    }
+  };
 }
 
-/** Auto-compiles the Lonelog standard campaign-header fields (lonelog.md §5.1) that can be
- * derived from the log body: last_update always refreshes, pcs is re-derived from the most
- * recent [PC:...] tag(s) found in the log. */
-function compileFrontmatter(body: string, contextDepth: number): Partial<NoteFrontMatter> {
-  const ctx = parseLonelogContext(body, contextDepth);
-  const derivedPcs = ctx.pcState.length
-    ? ctx.pcState.map((state) => `${state.split("|")[0].trim()} [PC:${state}]`).join(", ")
-    : undefined;
-  return {
-    last_update: todayIsoDate(),
-    ...(derivedPcs ? { pcs: derivedPcs } : {})
-  };
+/** The completion status line, with the generation's token usage when the provider reports it
+ * (including prompt-cache hits, so it's visible that a long game_context or rulebook isn't being
+ * re-billed at full price). */
+function doneStatus(response: GenerationResponse): string {
+  const usage = formatUsage(response);
+  return usage ? `Sybyl: done. Tokens: ${usage}.` : "Sybyl: done.";
 }
 
 const KEYCHAIN_PROVIDERS = ["anthropic", "openai", "gemini"] as const;
@@ -137,7 +154,15 @@ async function migrateAndLoadApiKey(account: string, legacyKey: string): Promise
   }
 }
 
-type Placement = "cursor" | "below-selection" | "end-of-note";
+
+/** A note that changed on disk outside Sybyl while Sybyl had its own changes to write. */
+interface NoteConflict {
+  /** Sybyl's side as of the last attempted write. While the note is still open, the live editor
+   * state supersedes it at resolution time (see conflictMine). */
+  mine: VaultFile;
+  /** The note as it is on disk, or null if it was deleted outside Sybyl. */
+  disk: VaultFile | null;
+}
 
 interface LastGeneration {
   filePath: string;
@@ -175,6 +200,7 @@ export default function App() {
   const [activeListPicker, setActiveListPicker] = useState<ActiveListPicker | null>(null);
   const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<VaultFile | null>(null);
+  const [conflict, setConflict] = useState<NoteConflict | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -202,6 +228,8 @@ export default function App() {
   const statusTimer = useRef<number | undefined>(undefined);
   const activeFileRef = useRef<VaultFile | null>(null);
   activeFileRef.current = activeFile;
+  const conflictRef = useRef<NoteConflict | null>(null);
+  const selectSeq = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const refreshFiles = useCallback(async (path: string) => {
@@ -279,15 +307,70 @@ export default function App() {
     await refreshDeckFolders(picked);
   }
 
-  function selectFile(file: VaultFile) {
+  /** Puts `file` in memory as the open note's current state (if it's still the open note) and in
+   * the sidebar list. With `loadBody`, also replaces the editor content. */
+  function applyFileState(file: VaultFile, loadBody = false) {
+    if (activeFileRef.current?.path === file.path) {
+      setActiveFile(file);
+      activeFileRef.current = file;
+      if (loadBody) {
+        setBody(file.body);
+        setLastGeneration(null);
+      }
+    }
+    setFiles((prev) => prev.map((f) => (f.path === file.path ? file : f)));
+  }
+
+  async function selectFile(file: VaultFile) {
     setSidebarOpen(false);
     if (file.path === activeFileRef.current?.path) return;
     void flushPendingSave();
-    setActiveFile(file);
-    setBody(file.body);
+    // The sidebar's copy was read when the vault list last loaded and may be stale if the note was
+    // edited outside Sybyl since, so open it fresh. This read is also the baseline the autosave
+    // guard compares against.
+    const seq = ++selectSeq.current;
+    let fresh: VaultFile;
+    try {
+      fresh = await openVaultFile(file.path);
+    } catch {
+      flashStatus(`Sybyl: ${file.name} is no longer on disk.`);
+      if (vaultPath) void refreshFiles(vaultPath);
+      return;
+    }
+    if (seq !== selectSeq.current) return;
+    setActiveFile(fresh);
+    activeFileRef.current = fresh;
+    setBody(fresh.body);
     setLastGeneration(null);
+    setFiles((prev) => prev.map((f) => (f.path === fresh.path ? fresh : f)));
     if (vaultPath) {
-      void maybeAutoSnapshot(vaultPath, file);
+      void maybeAutoSnapshot(vaultPath, fresh);
+    }
+  }
+
+  function raiseConflict(mine: VaultFile, disk: VaultFile | null) {
+    conflictRef.current = { mine, disk };
+    setConflict(conflictRef.current);
+  }
+
+  /** Writes a note through the external-change guard. If the note changed outside Sybyl, opens the
+   * conflict dialog with `file` as the user's side and returns false. While that dialog is open for
+   * the note, writes only update the user's side, so autosave can't keep re-raising it. Other
+   * errors propagate. */
+  async function writeGuarded(file: VaultFile): Promise<boolean> {
+    if (conflictRef.current?.mine.path === file.path) {
+      raiseConflict(file, conflictRef.current.disk);
+      return false;
+    }
+    try {
+      await writeVaultFile(file.path, file.fm, file.body);
+      return true;
+    } catch (error) {
+      if (error instanceof ExternalChangeError) {
+        raiseConflict(file, error.disk);
+        return false;
+      }
+      throw error;
     }
   }
 
@@ -304,13 +387,14 @@ export default function App() {
     const live = activeFileRef.current;
     const base = live && live.path === pending.file.path ? live : pending.file;
     const nextFm: NoteFrontMatter = { ...base.fm, ...compileFrontmatter(pending.body, settings.lonelogContextDepth) };
-    await writeVaultFile(base.path, nextFm, pending.body);
     const updated: VaultFile = { ...base, fm: nextFm, body: pending.body };
-    if (activeFileRef.current?.path === updated.path) {
-      setActiveFile(updated);
-      activeFileRef.current = updated;
+    // In memory first, so if the write hits a conflict the user's side already holds this edit.
+    applyFileState(updated);
+    try {
+      await writeGuarded(updated);
+    } catch (error) {
+      flashStatus(`Sybyl error: couldn't save ${updated.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    setFiles((prev) => prev.map((f) => (f.path === updated.path ? updated : f)));
   }, [settings.lonelogContextDepth]);
 
   const persistBody = useCallback((file: VaultFile, nextBody: string) => {
@@ -329,6 +413,85 @@ export default function App() {
     window.clearTimeout(saveTimer.current);
     pendingSaveRef.current = null;
   }
+
+  /** The user's side of a conflict: the live editor state while the note is still open (it may have
+   * kept changing behind the dialog, e.g. a generation landing), otherwise what was captured. */
+  function conflictMine(c: NoteConflict): VaultFile {
+    const live = activeFileRef.current;
+    if (live?.path !== c.mine.path) return c.mine;
+    return { ...live, body: currentDoc() };
+  }
+
+  /** Settles a conflict. The losing side is always saved as a snapshot first, so either choice can
+   * be undone from Version history. */
+  async function resolveConflict(choice: "mine" | "disk") {
+    const c = conflictRef.current;
+    if (!c || !vaultPath) return;
+    conflictRef.current = null;
+    setConflict(null);
+    discardPendingSave(c.mine.path);
+    const mine = conflictMine(c);
+    try {
+      if (choice === "mine") {
+        if (c.disk) await saveSnapshot(vaultPath, c.disk);
+        const nextFm: NoteFrontMatter = { ...mine.fm, ...compileFrontmatter(mine.body, settings.lonelogContextDepth) };
+        const updated: VaultFile = { ...mine, fm: nextFm };
+        await writeVaultFile(updated.path, updated.fm, updated.body, { force: true });
+        applyFileState(updated);
+        if (!c.disk) await refreshFiles(vaultPath);
+        flashStatus(c.disk ? "Kept your version. The outside version is in Version history." : `Saved ${mine.name} again.`);
+      } else {
+        await saveSnapshot(vaultPath, mine);
+        if (c.disk) {
+          applyFileState(await openVaultFile(mine.path), true);
+          flashStatus("Loaded the outside version. Yours is in Version history.");
+        } else {
+          if (activeFileRef.current?.path === mine.path) {
+            setActiveFile(null);
+            activeFileRef.current = null;
+            setBody("");
+          }
+          await refreshFiles(vaultPath);
+          flashStatus(`Closed ${mine.name}. Your version is in its Version history folder.`);
+        }
+      }
+    } catch (error) {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  // When the window comes back (e.g. after editing the note in another program), check the open
+  // note against the disk. With no unsaved edits the outside version just loads; with unsaved edits
+  // the save attempt raises the conflict dialog.
+  useEffect(() => {
+    async function checkActiveNote() {
+      const file = activeFileRef.current;
+      if (!file || conflictRef.current) return;
+      if (pendingSaveRef.current) {
+        await flushPendingSave();
+        return;
+      }
+      const change = await checkExternalChange(file.path).catch(() => null);
+      // Bail if the user switched notes or started typing while the disk was being read.
+      if (!change || change.kind === "unchanged" || activeFileRef.current?.path !== file.path || pendingSaveRef.current) return;
+      if (change.kind === "deleted") {
+        raiseConflict(conflictMine({ mine: file, disk: null }), null);
+        return;
+      }
+      applyFileState(await openVaultFile(file.path), true);
+      flashStatus(`Reloaded ${file.name}: it was changed outside Sybyl.`);
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") void checkActiveNote();
+    }
+    const onFocus = () => void checkActiveNote();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [flushPendingSave]);
 
   function handleBodyChange(next: string) {
     setBody(next);
@@ -414,7 +577,7 @@ export default function App() {
     });
     if (!target) return;
     try {
-      const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+      const currentBody = currentDoc();
       await exportNoteTo(target, file.fm, currentBody);
       flashStatus(`Exported to ${target}`);
     } catch (error) {
@@ -561,30 +724,32 @@ export default function App() {
     return { wrapInCodeBlock: !noWrap && (settings.lonelogWrapCodeBlock ?? true) };
   }
 
+  /** The open note's body as the editor holds it, minus any output still streaming in (that's
+   * provisional until committed; see lib/liveOutput.ts). */
+  function currentDoc(): string {
+    const view = editorViewRef.current;
+    return view ? docWithoutLiveOutput(view.state) : body;
+  }
+
   /** Writes a frontmatter patch for the active file to disk and updates in-memory state. */
   async function updateActiveFrontmatter(patch: Partial<NoteFrontMatter>) {
     const file = activeFileRef.current;
     if (!file) return;
     const nextFm = { ...file.fm, ...patch };
-    const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
-    await writeVaultFile(file.path, nextFm, currentBody);
+    const currentBody = currentDoc();
     const updated: VaultFile = { ...file, fm: nextFm, body: currentBody };
-    setActiveFile(updated);
-    activeFileRef.current = updated;
-    setFiles((prev) => prev.map((f) => (f.path === updated.path ? updated : f)));
+    // In memory first: on a conflict the patch (e.g. a freshly digested game_context) then rides
+    // along on the user's side instead of being lost.
+    applyFileState(updated);
+    await writeGuarded(updated);
   }
 
   function insertFormatted(formatted: string, placement: Placement): InsertedRange | null {
     const file = activeFileRef.current;
     const view = editorViewRef.current;
     if (view) {
-      const range =
-        placement === "below-selection"
-          ? insertBelowSelection(view, formatted)
-          : placement === "end-of-note"
-          ? appendToNote(view, formatted)
-          : insertAtCursor(view, formatted);
-      const nextBody = view.state.doc.toString();
+      const range = insertAt(view, placement, formatted);
+      const nextBody = docWithoutLiveOutput(view.state);
       setBody(nextBody);
       if (file) persistBody(file, nextBody);
       return range;
@@ -604,7 +769,7 @@ export default function App() {
     if (!view) return null;
     view.dispatch({ changes: { from: range.from, to: range.to, insert: formatted } });
     view.focus();
-    const nextBody = view.state.doc.toString();
+    const nextBody = docWithoutLiveOutput(view.state);
     setBody(nextBody);
     if (file) persistBody(file, nextBody);
     return { from: range.from, to: range.from + formatted.length };
@@ -658,26 +823,51 @@ export default function App() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // Streamed output is written into the editor as it arrives, re-formatted whole each time (the
+    // formatters work on the full response: fences, line prefixes, oracle parsing). Updates are
+    // batched, since every write re-renders the editor.
+    let live: LiveOutput | null = null;
+    let insideCodeBlock = false;
+    const stream = batched((textSoFar: string) => {
+      const view = editorViewRef.current;
+      if (!view || activeFileRef.current?.path !== file.path) return;
+      if (!live) {
+        // Where the output starts is decided by the cursor when the first text arrives.
+        insideCodeBlock = isInsideCodeBlock(view);
+        const formatted = format(textSoFar, insideCodeBlock);
+        live = replaceRange ? LiveOutput.replace(view, replaceRange, formatted) : LiveOutput.insert(view, placement, formatted);
+      } else {
+        live.write(view, format(textSoFar, insideCodeBlock));
+      }
+    });
+
     setLoading(true);
     showStatus("Sybyl: generating...");
     try {
       const provider = getProvider(settings, providerIdFor(file.fm));
-      const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+      const currentBody = currentDoc();
       const request: GenerationRequest = {
         ...buildRequest(file.fm, userMessage, settings, maxOutputTokens, currentBody),
         model: file.fm.model
       };
-      const response = await provider.generate(request, controller.signal);
+      const response = await provider.generate(request, controller.signal, stream.push);
+      stream.stop();
       if (!stillActive(file)) return false;
-      // Read after the await: the cursor may have moved while the request was in flight.
       const view = editorViewRef.current;
-      const insideCodeBlock = view ? isInsideCodeBlock(view) : false;
+      if (!live) insideCodeBlock = view ? isInsideCodeBlock(view) : false;
       const formatted = format(response.text, insideCodeBlock);
-      const range = replaceRange ? replaceFormatted(formatted, replaceRange) : insertFormatted(formatted, placement);
+      // Commit swaps the streamed text for the final output as one undoable change. Without a live
+      // span (nothing streamed, or the editor was remounted mid-stream) it's a plain insert.
+      const committed = live && view ? (live as LiveOutput).commit(view, formatted) : null;
+      const range =
+        committed ?? (replaceRange ? replaceFormatted(formatted, replaceRange) : insertFormatted(formatted, placement));
       setLastGeneration({ filePath: file.path, userMessage, format, maxOutputTokens, placement, insertedText: formatted, range });
-      flashStatus("Sybyl: done.");
+      flashStatus(doneStatus(response), 7000);
       succeeded = true;
     } catch (error) {
+      stream.stop();
+      const view = editorViewRef.current;
+      if (live && view) (live as LiveOutput).cancel(view);
       if (error instanceof DOMException && error.name === "AbortError") {
         flashStatus("Sybyl: cancelled.");
       } else {
@@ -745,6 +935,12 @@ export default function App() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // These results don't go into the note as they stream (a digest becomes frontmatter, a
+    // character sheet is inserted whole), so progress is shown in the status line instead.
+    const progress = batched((textSoFar: string) => {
+      showStatus(`Sybyl: generating... ${textSoFar.length.toLocaleString()} characters so far`);
+    });
+
     setLoading(true);
     showStatus("Sybyl: generating...");
     try {
@@ -757,10 +953,10 @@ export default function App() {
         maxOutputTokens: options.maxOutputTokens,
         model: file.fm.model
       };
-      const response = await provider.generate(request, controller.signal);
+      const response = await provider.generate(request, controller.signal, progress.push).finally(progress.stop);
       if (!stillActive(file)) return;
       await options.onResult(response.text);
-      flashStatus("Sybyl: done.");
+      flashStatus(doneStatus(response), 7000);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         flashStatus("Sybyl: cancelled.");
@@ -1229,7 +1425,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
   async function cmdSaveSnapshot() {
     const file = activeFileRef.current;
     if (!vaultPath || !file) return;
-    const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+    const currentBody = currentDoc();
     await saveSnapshot(vaultPath, { ...file, body: currentBody });
     flashStatus("Snapshot saved.");
   }
@@ -1250,17 +1446,14 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     setHistoryOpen(false);
     discardPendingSave(file.path);
     try {
-      const currentBody = editorViewRef.current?.state.doc.toString() ?? body;
+      const currentBody = currentDoc();
       await saveSnapshot(vaultPath, { ...file, body: currentBody });
       const restored = await readVaultFile(snapshot.path);
       const nextFm: NoteFrontMatter = { ...file.fm, ...restored.fm };
-      await writeVaultFile(file.path, nextFm, restored.body);
       const updated: VaultFile = { ...file, fm: nextFm, body: restored.body };
-      setActiveFile(updated);
-      activeFileRef.current = updated;
-      setBody(restored.body);
-      setFiles((prev) => prev.map((f) => (f.path === updated.path ? updated : f)));
-      flashStatus("Restored previous version.");
+      // In memory first, so on a conflict the restored version is the user's side.
+      applyFileState(updated, true);
+      if (await writeGuarded(updated)) flashStatus("Restored previous version.");
     } catch (error) {
       flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -1707,6 +1900,14 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         />
       )}
       {userGuideOpen && <UserGuideModal onClose={() => setUserGuideOpen(false)} />}
+      {conflict && (
+        <ConflictModal
+          noteName={conflict.mine.fm.pc_name || conflict.mine.name}
+          deleted={conflict.disk === null}
+          onKeepMine={() => void resolveConflict("mine")}
+          onTakeDisk={() => void resolveConflict("disk")}
+        />
+      )}
       {deleteTarget && (
         <ConfirmModal
           title="Delete Note"

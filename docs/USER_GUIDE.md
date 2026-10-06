@@ -156,6 +156,21 @@ Restoring is itself reversible: before overwriting anything, Sybyl saves one mor
 whatever was on screen, so you can always step back from a restore too. Deleting a note also
 deletes its snapshot history.
 
+### Editing notes outside Sybyl
+
+Notes are plain `.md` files, so you can also edit them in Obsidian, another text editor, or
+through a sync tool. Sybyl checks before every save that the file on disk is still the version it
+last opened or saved, so it never silently overwrites an outside edit:
+
+- Opening a note always reads it fresh from disk.
+- When you switch back to the Sybyl window, the open note is checked. If you have no unsaved
+  edits, the outside version simply loads, with a short message saying so.
+- If the note changed outside Sybyl while you also had unsaved edits, Sybyl asks which version to
+  keep: **Keep my version** or **Load the outside version**. Either way, the version that loses is
+  saved to Version history first, so you can still get it back.
+- If the note was deleted or moved outside Sybyl while it was open, Sybyl asks whether to
+  **Save it again** or **Close it**. Closing keeps your version in the note's `.history/` folder.
+
 ## Commands
 
 Open the palette with **Commands** (Ctrl+K) — it needs an active note. Type to filter the list,
@@ -191,6 +206,22 @@ Structural / non-AI commands:
 Every AI-backed command can be **cancelled** mid-flight (the Cancel button in the status message at the top right of the editor) and the
 most recent one can be **regenerated** — re-run with the identical request, swapping its output
 in place — as long as the note hasn't changed at that spot since.
+
+Responses **stream in** as they're written: the text appears in the note while it's being
+generated, and you can keep typing elsewhere in the note meanwhile. Until it finishes, that text
+is provisional. It isn't saved, it isn't an undo step, and cancelling (or an error) removes it.
+Once finished, the whole result is a single change that one Ctrl+Z undoes. Commands whose result
+doesn't go into the note (Digest Source, for one) show their progress in the status message
+instead. With a local model that thinks before answering, nothing appears until the thinking is
+done.
+
+When a generation finishes, the status message shows its **token usage**, for example
+`Tokens: 5,212 in (5,000 cached) · 180 out`. "In" is the whole prompt you sent: rules, game
+context, sources and recent log. The cached part is billed at a fraction of the normal price
+(Anthropic, OpenAI and Gemini all cache repeated prompts). "Out" includes any thinking the model
+did. Sybyl shows tokens, not prices, because prices differ by model and change over time. Check
+your provider's pricing page to convert. Some OpenAI-compatible servers don't report usage, and
+then only "done." appears.
 
 **Ask the Rules** and **Generate Character** prefer an already-digested `game_context` over
 re-reading a raw file: run **Digest Source into Game Context** once per source, and every
@@ -264,6 +295,11 @@ configuration for Claude (Anthropic), OpenAI, Gemini, and Ollama:
 only: `provider:` (`anthropic`, `openai`, `gemini`, or `ollama`), `model:`, `temperature:`, and
 `language:` (the response language). Edit the `.md` file in another editor to set them, since the
 in-app editor doesn't show frontmatter.
+
+Newer Claude models (Opus 4.7 and later, Sonnet 5 and later, Fable) don't accept a temperature,
+so Sybyl leaves it out for them and the temperature setting has no effect. Those models also
+think before answering, and that thinking counts against the max output tokens. If a request
+fails with "ran out of output tokens", raise that setting.
 
 ## Import and export
 

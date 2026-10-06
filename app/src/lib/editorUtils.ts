@@ -5,27 +5,51 @@ export interface InsertedRange {
   to: number;
 }
 
-export function insertAtCursor(view: EditorView, text: string): InsertedRange {
-  const pos = view.state.selection.main.head;
-  const insert = `\n${text}\n`;
+/** Where generated text goes: at the cursor, on a new line below the selection, or at the end. */
+export type Placement = "cursor" | "below-selection" | "end-of-note";
+
+/** Where a placement inserts, and the newlines that separate the text from its surroundings. */
+export interface InsertionFrame {
+  at: number;
+  before: string;
+  after: string;
+  scroll: boolean;
+}
+
+export function insertionFrame(view: EditorView, placement: Placement): InsertionFrame {
+  const head = view.state.selection.main.head;
+  if (placement === "below-selection") {
+    return { at: view.state.doc.lineAt(head).to, before: "\n", after: "", scroll: false };
+  }
+  if (placement === "end-of-note") {
+    return { at: view.state.doc.length, before: "\n", after: "\n", scroll: false };
+  }
+  return { at: head, before: "\n", after: "\n", scroll: true };
+}
+
+/** Inserts `text` inside `frame` as one undoable change, leaving the cursor after it. */
+export function insertInFrame(view: EditorView, frame: InsertionFrame, text: string, replaceLength = 0): InsertedRange {
+  const insert = `${frame.before}${text}${frame.after}`;
   view.dispatch({
-    changes: { from: pos, insert },
-    selection: { anchor: pos + insert.length },
-    scrollIntoView: true
+    changes: { from: frame.at, to: frame.at + replaceLength, insert },
+    selection: { anchor: frame.at + insert.length },
+    scrollIntoView: frame.scroll
   });
   view.focus();
-  return { from: pos + 1, to: pos + 1 + text.length };
+  const from = frame.at + frame.before.length;
+  return { from, to: from + text.length };
+}
+
+export function insertAt(view: EditorView, placement: Placement, text: string): InsertedRange {
+  return insertInFrame(view, insertionFrame(view, placement), text);
+}
+
+export function insertAtCursor(view: EditorView, text: string): InsertedRange {
+  return insertAt(view, "cursor", text);
 }
 
 export function appendToNote(view: EditorView, text: string): InsertedRange {
-  const pos = view.state.doc.length;
-  const insert = `\n${text}\n`;
-  view.dispatch({
-    changes: { from: pos, insert },
-    selection: { anchor: pos + insert.length }
-  });
-  view.focus();
-  return { from: pos + 1, to: pos + 1 + text.length };
+  return insertAt(view, "end-of-note", text);
 }
 
 export function getSelection(view: EditorView): string {
@@ -33,15 +57,7 @@ export function getSelection(view: EditorView): string {
 }
 
 export function insertBelowSelection(view: EditorView, text: string): InsertedRange {
-  const head = view.state.selection.main.head;
-  const line = view.state.doc.lineAt(head);
-  const insert = `\n${text}`;
-  view.dispatch({
-    changes: { from: line.to, insert },
-    selection: { anchor: line.to + insert.length }
-  });
-  view.focus();
-  return { from: line.to + 1, to: line.to + 1 + text.length };
+  return insertAt(view, "below-selection", text);
 }
 
 /** Wraps the current selection with `before`/`after` markers (bold, italic, code, links, ...).

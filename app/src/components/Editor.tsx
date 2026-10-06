@@ -7,6 +7,7 @@ import { basicSetup } from "codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { lonelogHighlight } from "../lib/lonelogHighlight";
 import { setHeadingLevel, wrapSelection } from "../lib/editorUtils";
+import { contentChanged, docWithoutLiveOutput, liveSpanField } from "../lib/liveOutput";
 
 interface EditorProps {
   value: string;
@@ -72,9 +73,12 @@ export default function Editor({ value, onChange, theme, editorRef, onSelectionC
       lonelogHighlight(),
       theme === "dark" ? oneDark : lightEditorTheme,
       EditorView.lineWrapping,
+      liveSpanField,
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          onChangeRef.current(update.state.doc.toString());
+        // Streamed generation output is provisional (see lib/liveOutput.ts), so it's left out of
+        // what the app sees as the note's content until it's committed.
+        if (update.docChanged && contentChanged(update.startState, update.state)) {
+          onChangeRef.current(docWithoutLiveOutput(update.state));
         }
         if (update.docChanged || update.selectionSet || update.focusChanged || update.geometryChanged) {
           onSelectionChangeRef.current?.();
@@ -102,7 +106,9 @@ export default function Editor({ value, onChange, theme, editorRef, onSelectionC
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
-    const current = view.state.doc.toString();
+    // Compared without any streaming output, which `value` never includes: otherwise typing during
+    // a stream would look like an external change and reset the editor, dropping the stream.
+    const current = docWithoutLiveOutput(view.state);
     if (current !== value) {
       // An external value change (switching notes, restoring a snapshot) swaps in a fresh state
       // rather than dispatching a replace: a dispatched replace would land in the undo history
