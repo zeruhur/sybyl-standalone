@@ -30,9 +30,10 @@ import { checkExternalChange, createVaultFile, deleteVaultFile, exportNoteTo, Ex
 import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
 import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
-import { generateWord } from "./lib/toolkit/wordGenerators";
+import { generateWord, WORD_CATEGORIES } from "./lib/toolkit/wordGenerators";
+import { addLogEntry, ToolkitLogEntry } from "./lib/toolkit/history";
 import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
-import { askOracle, formatOracleResult, normalizeChaosFactor } from "./lib/toolkit/oracleEngine";
+import { askOracle, formatOracleResult, normalizeChaosFactor, ORACLE_LIKELIHOODS } from "./lib/toolkit/oracleEngine";
 import {
   createCustomDeckSession,
   CustomDeckSession,
@@ -211,6 +212,7 @@ export default function App() {
   const [deckSession, setDeckSession] = useState<DeckSession | null>(null);
   const [tableFiles, setTableFiles] = useState<TableFile[]>([]);
   const [oracleChaosFactor, setOracleChaosFactor] = useState(5);
+  const [toolkitLog, setToolkitLog] = useState<ToolkitLogEntry[]>([]);
   const [deckFolders, setDeckFolders] = useState<DeckFolder[]>([]);
   const [customDeckSession, setCustomDeckSession] = useState<CustomDeckSession | null>(null);
   const [status, setStatus] = useState<string>("");
@@ -1471,20 +1473,26 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     }
   }
 
+  /** Records a Toolkit result in the session log (the History tab), then hands it back. */
+  function logToolkit<T extends string | undefined>(tool: string, text: T, detail?: string, insertable = true): T {
+    if (text) setToolkitLog((log) => addLogEntry(log, { tool, text, detail, insertable }));
+    return text;
+  }
+
   function toolkitRollDice(expr: string): string | undefined {
     const result = rollExpression(expr);
     if (!result) {
       flashStatus(`Sybyl: couldn't parse dice expression "${expr}".`);
       return undefined;
     }
-    return formatRollResult(result);
+    return logToolkit("Dice", formatRollResult(result));
   }
 
   function toolkitDrawCard(): string | undefined {
     const session = deckSession ?? createDeckSession("standard");
     const { session: nextSession, card } = drawCard(session);
     setDeckSession(nextSession);
-    return card;
+    return logToolkit("Cards", card, session.type === "tarot" ? "Tarot" : undefined);
   }
 
   function toolkitReshuffleDeck() {
@@ -1497,13 +1505,15 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
   }
 
   function toolkitGenerateWord(categoryId: string): string | undefined {
-    return generateWord(categoryId);
+    const category = WORD_CATEGORIES.find((c) => c.id === categoryId)?.label;
+    return logToolkit("Words", generateWord(categoryId), category);
   }
 
   async function toolkitRollTable(path: string): Promise<string | undefined> {
     try {
       const content = await readTableFile(path);
-      return rollTable(parseTableEntries(content));
+      const table = tableFiles.find((t) => t.path === path)?.name;
+      return logToolkit("Tables", rollTable(parseTableEntries(content)), table);
     } catch (error) {
       flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
@@ -1538,7 +1548,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
       flashStatus(`Sybyl: unknown oracle likelihood "${likelihoodId}".`);
       return undefined;
     }
-    return formatOracleResult(result);
+    const likelihood = ORACLE_LIKELIHOODS.find((l) => l.id === likelihoodId)?.label;
+    return logToolkit("Oracle", formatOracleResult(result), likelihood);
   }
 
   function toolkitSetCustomDeck(folder: DeckFolder) {
@@ -1558,6 +1569,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     const { session, card } = drawCustomCard(customDeckSession);
     setCustomDeckSession(session);
     if (!card) return undefined;
+    // Logged by file name: an image has no text form to insert into a note.
+    logToolkit("Custom Deck", card.split(/[\\/]/).pop() ?? card, undefined, false);
     try {
       return { path: card, dataUri: await imageToDataUri(card) };
     } catch (error) {
@@ -1572,7 +1585,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
   }
 
   function toolkitCutUp(text: string, mode: CutUpMode): string | undefined {
-    return cutUpText(text, mode);
+    return logToolkit("Cut-up", cutUpText(text, mode));
   }
 
   async function toolkitLoadTableText(path: string): Promise<string | undefined> {
@@ -1864,6 +1877,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
                     onReshuffleCustomDeck={toolkitReshuffleCustomDeck}
                     onCutUp={toolkitCutUp}
                     onLoadTableText={toolkitLoadTableText}
+                    log={toolkitLog}
+                    onClearLog={() => setToolkitLog([])}
                   />
                 ) : null
               },

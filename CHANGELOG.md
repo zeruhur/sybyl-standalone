@@ -11,6 +11,9 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
   so every campaign keeps its own across restarts. Change it from the Toolkit's Oracle tab or in
   Edit Campaign Info. Campaign Info shows it. With no note open, it applies to the current session
   only, as before.
+- A **History** tab in the Toolkit lists every roll, draw and result from the session, newest
+  first, each with an Insert button, so a result isn't lost just because you didn't insert it
+  right away. It keeps the last 200 and is cleared when you close the app (or with Clear).
 
 ### Fixed
 - Two saves to the same note in quick succession (for example, clicking the Chaos Factor arrows

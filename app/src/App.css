@@ -496,6 +496,31 @@ html, body, #root {
   overflow-wrap: anywhere;
 }
 
+.toolkit-history-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.toolkit-history-header button {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.toolkit-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toolkit-history-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
 .toolkit-empty {
   font-size: 12px;
   color: var(--text-dim);

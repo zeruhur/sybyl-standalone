@@ -255,6 +255,10 @@ set of offline, deterministic tools — none of them call an AI provider:
   line-by-line. Text can be typed directly or loaded from an existing table file.
 - **Tables** — rolls on custom random tables you author yourself as plain `.md`/`.txt` files in
   `<vault>/tables/`, one entry per line (optionally weighted with a trailing `^N`).
+- **History** — every roll, draw and result from this session, newest first, with the tool and
+  the time, so nothing is lost just because you didn't insert it right away. Keeps the last 200;
+  **Clear** empties it, and it starts fresh each time you open the app. Custom Deck draws are
+  listed by file name, without an Insert button.
 
 Every result has its own **Insert** button, which inserts at the editor cursor and is disabled
 (not hidden) when no note is open.
