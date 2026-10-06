@@ -119,7 +119,7 @@ closes it.
 
 ## Campaign Info panel
 
-The **Campaign Info** tab of the side panel (the **Info** button) shows every campaign
+The **Info** tab of the side panel (the **Info** button) shows every campaign
 frontmatter field at a glance: title, type, player, ruleset, genre, PCs, dates, tools, themes,
 tone, notes, and the digested game context. Since the editor never renders frontmatter directly,
 this is the only place to confirm a frontmatter edit actually landed. Its **Edit campaign info**
@@ -239,12 +239,20 @@ Click **Toolkit** in the command bar (no note required) to open the side panel's
 set of offline, deterministic tools — none of them call an AI provider:
 
 - **Dice** — full expression roller (`2d6+2`, `4d6kh3`, exploding `d6!`, dice-pool
-  successes/failures) plus one-tap quick buttons for d4–d20/d%.
+  successes/failures) plus one-tap quick buttons for d4–d20/d%. Also: minimum and maximum per
+  die (`4d6min3`, `4d6max3`), compounding (`2d6!!`, where re-rolls add onto the same die), and
+  re-rolls (`d6r` re-rolls 1s until something else comes up, `d6ro` re-rolls once,
+  `4d10r<=3` re-rolls anything 3 or under). Modifiers can be written in any order; they're
+  applied in the notation's standard order.
 - **Oracle** — a deterministic Yes/No oracle: pick a likelihood (Impossible…Certain) and a
   1–9 Chaos Factor, and it rolls 1d100 against a computed threshold, flagging exceptional results
-  and random events.
+  and random events. The Chaos Factor is saved with the open note (as `chaos_factor` in its
+  frontmatter, also shown in Campaign Info and editable there), so each campaign keeps its own. It starts at 5 and
+  only changes when you change it. With no note open, it applies to the current session only.
 - **Cards** — standard 52-card or full Tarot deck with a draw/discard pile that auto-reshuffles
-  when empty; Tarot reversals are decided per draw.
+  when empty; Tarot reversals are decided per draw. Each note keeps its own deck, saved in a hidden
+  `.deck-state/` folder in your vault, so a campaign's shuffle is still there after a restart.
+  With no note open, the deck lasts for the session only.
 - **Custom Deck** — draws images from `<vault>/decks/<name>/` (any folder of image files you add
   yourself). Preview-only — there's no Lonelog notation for an image, so draws can't be inserted.
 - **Words** — 8 categories of curated word generators (noun, verb, adjective, job, town name,
@@ -253,6 +261,10 @@ set of offline, deterministic tools — none of them call an AI provider:
   line-by-line. Text can be typed directly or loaded from an existing table file.
 - **Tables** — rolls on custom random tables you author yourself as plain `.md`/`.txt` files in
   `<vault>/tables/`, one entry per line (optionally weighted with a trailing `^N`).
+- **History** — every roll, draw and result from this session, newest first, with the tool and
+  the time, so nothing is lost just because you didn't insert it right away. Keeps the last 200;
+  **Clear** empties it, and it starts fresh each time you open the app. Custom Deck draws are
+  listed by file name, without an Insert button.
 
 Every result has its own **Insert** button, which inserts at the editor cursor and is disabled
 (not hidden) when no note is open.

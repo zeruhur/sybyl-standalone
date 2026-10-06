@@ -172,6 +172,24 @@ Pushing a tag matching `v*` runs `.github/workflows/release.yml`, which builds a
 GitHub Release. See the comment block at the top of that file for the full list of secrets it
 reads.
 
+### Releasing
+
+Every release needs a section in [`CHANGELOG.md`](../CHANGELOG.md). Its text becomes the GitHub
+release description, with GitHub's generated list of commits appended after it. The workflow
+stops before building anything if the section is missing.
+
+1. While working, note user-facing changes under `## Unreleased` in `CHANGELOG.md` (Added /
+   Changed / Fixed / Internal).
+2. To release, rename that heading to `## vX.Y.Z - YYYY-MM-DD`, and start a new empty
+   `## Unreleased` above it.
+3. Bump the version in `app/package.json`, `app/package-lock.json` (two places),
+   `app/src-tauri/tauri.conf.json`, `app/src-tauri/Cargo.toml` and `app/src-tauri/Cargo.lock`
+   (the `Sybyl` package).
+4. Commit, merge to `main`, then tag and push: `git tag -a vX.Y.Z -m vX.Y.Z` and
+   `git push origin main vX.Y.Z`.
+
+To preview a release description locally: `bash .github/scripts/changelog-section.sh vX.Y.Z`.
+
 Two GitHub Actions expression gotchas hit while writing that workflow, worth remembering if you
 touch it again:
 

@@ -75,6 +75,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # The release description is this version's CHANGELOG.md section, with GitHub's generated
+      # list of commits appended after it. Fails here, before any build starts, if the section is
+      # missing: every release needs one (see "Releasing" in docs/BUILDING.md).
+      - name: Extract release notes from CHANGELOG.md
+        run: bash .github/scripts/changelog-section.sh "${{ github.ref_name }}" > release-notes.md
+
       - name: Create draft release
         id: create-release
         uses: softprops/action-gh-release@v2
@@ -82,6 +88,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Sybyl ${{ github.ref_name }}
           draft: true
+          body_path: release-notes.md
           generate_release_notes: true
 
   desktop:

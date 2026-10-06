@@ -74,6 +74,9 @@ export interface NoteFrontMatter {
   language?: string;
   scene_counter?: number;
   session_number?: number;
+  /** The Toolkit oracle's Chaos Factor (1-9) for this note. Set by the user only, never adjusted
+   * automatically. Read it through normalizeChaosFactor(), since a hand-edited value can be anything. */
+  chaos_factor?: number;
   // Standalone-app fields (spec section 3)
   pc_name?: string;
   session_type?: SessionType;

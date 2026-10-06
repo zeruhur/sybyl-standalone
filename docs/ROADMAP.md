@@ -1,6 +1,6 @@
 # Roadmap
 
-Planned changes for the standalone app, as of 2026-09-27. Items 1-6 were done on 2026-10-05/06. Pick up the rest as needed.
+Planned changes for the standalone app, as of 2026-09-27. Items 1-10 were done on 2026-10-05/06. Pick up the rest as needed.
 
 ## Engineering health
 
@@ -16,10 +16,10 @@ Planned changes for the standalone app, as of 2026-09-27. Items 1-6 were done on
 
 ## Play features
 
-7. **Persist the Chaos Factor per note**, for example as a `chaos_factor` frontmatter field. The user sets it manually, as now, but it no longer resets on every launch.
-8. **Toolkit roll/draw log.** Keep a scrollable history for the session. Today a result is lost unless it's inserted into a note.
-9. **Persist card deck state per note**, so a campaign's shuffled deck survives a restart.
-10. **Dice grammar Part II.** Start with reroll, compounding, and min/max.
+7. ~~**Persist the Chaos Factor per note.**~~ Done 2026-10-06 as the `chaos_factor` frontmatter field. It's read through `normalizeChaosFactor()` (oracleEngine.ts: rounds and clamps to 1-9, defaults to 5) and written by the Toolkit's CF input or the Edit Campaign Info dialog (a 1-9 select) via `updateActiveFrontmatter`. Campaign Info shows it. With no note open, the value is session-only as before. It still changes only when the user changes it. This also fixed a race that came before this item: overlapping writes to one note could report Sybyl's own write as an outside change. `writeVaultFile` now queues writes per path.
+8. ~~**Toolkit roll/draw log.**~~ Done 2026-10-06 as a History tab in the Toolkit. The session-only log is kept in App state (`toolkitLog`, `lib/toolkit/history.ts`, capped at 200). App's toolkit handlers record results through `logToolkit()`; Custom Deck draws are logged by file name and aren't insertable.
+9. ~~**Persist card deck state per note.**~~ Done 2026-10-06. Each note's deck is a sidecar file, `<vault>/.deck-state/<note>.json` (`lib/toolkit/deckState.ts`), not frontmatter, where up to 78 card tokens would clutter the YAML. It loads when the note opens and is saved by App's `updateDeck()` on every draw, reshuffle or deck change; saves to one file are queued. The file is deleted with the note. A damaged or hand-edited file that isn't exactly the deck's cards is ignored, and the note starts a fresh deck. Custom image decks still aren't persisted.
+10. ~~**Dice grammar Part II (first slice).**~~ Done 2026-10-06: min/max, compounding (`!!`), and re-roll (`r`/`ro`). The engine now parses with a tokenizer, so modifiers can be written in any order and run in the spec's priority order (`5d10!k2` didn't parse before). The highlighter matches the same grammar. Still open: penetrating (`!p`), unique (`u`), critical success/failure (`cs`/`cf`), sorting, group rolls, and parenthesized math.
 
 ## Platform
 

@@ -30,9 +30,11 @@ import { checkExternalChange, createVaultFile, deleteVaultFile, exportNoteTo, Ex
 import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
 import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
-import { generateWord } from "./lib/toolkit/wordGenerators";
+import { generateWord, WORD_CATEGORIES } from "./lib/toolkit/wordGenerators";
+import { addLogEntry, ToolkitLogEntry } from "./lib/toolkit/history";
+import { deleteDeckState, loadDeckState, saveDeckState } from "./lib/toolkit/deckState";
 import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
-import { askOracle, formatOracleResult } from "./lib/toolkit/oracleEngine";
+import { askOracle, formatOracleResult, normalizeChaosFactor, ORACLE_LIKELIHOODS } from "./lib/toolkit/oracleEngine";
 import {
   createCustomDeckSession,
   CustomDeckSession,
@@ -211,6 +213,7 @@ export default function App() {
   const [deckSession, setDeckSession] = useState<DeckSession | null>(null);
   const [tableFiles, setTableFiles] = useState<TableFile[]>([]);
   const [oracleChaosFactor, setOracleChaosFactor] = useState(5);
+  const [toolkitLog, setToolkitLog] = useState<ToolkitLogEntry[]>([]);
   const [deckFolders, setDeckFolders] = useState<DeckFolder[]>([]);
   const [customDeckSession, setCustomDeckSession] = useState<CustomDeckSession | null>(null);
   const [status, setStatus] = useState<string>("");
@@ -302,6 +305,7 @@ export default function App() {
     setBody("");
     // The custom deck session holds image paths inside the old vault.
     setCustomDeckSession(null);
+    setDeckSession(null);
     await refreshFiles(picked);
     await refreshTableFiles(picked);
     await refreshDeckFolders(picked);
@@ -345,6 +349,12 @@ export default function App() {
     setFiles((prev) => prev.map((f) => (f.path === fresh.path ? fresh : f)));
     if (vaultPath) {
       void maybeAutoSnapshot(vaultPath, fresh);
+      // Each note has its own card deck; null (no saved deck) starts a fresh one on the next draw.
+      // Cleared right away so a draw before it loads can't save the previous note's deck here.
+      setDeckSession(null);
+      void loadDeckState(vaultPath, fresh.name).then((deck) => {
+        if (activeFileRef.current?.path === fresh.path) setDeckSession(deck);
+      });
     }
   }
 
@@ -556,10 +566,12 @@ export default function App() {
     try {
       await deleteVaultFile(target.path);
       await deleteSnapshots(vaultPath, target.name).catch(() => {});
+      await deleteDeckState(vaultPath, target.name).catch(() => {});
       if (activeFileRef.current?.path === target.path) {
         setActiveFile(null);
         activeFileRef.current = null;
         setBody("");
+        setDeckSession(null);
       }
       await refreshFiles(vaultPath);
       flashStatus(`Deleted: ${target.name}`);
@@ -1198,6 +1210,12 @@ Keep it concise — 4 bullet points, one short sentence each.`;
           { value: "campaign", label: "Campaign" },
           { value: "one_shot", label: "One-shot" }
         ]
+      },
+      {
+        key: "chaos_factor",
+        label: "Chaos Factor (Toolkit oracle)",
+        defaultValue: String(normalizeChaosFactor(fm.chaos_factor)),
+        options: [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ value: String(n), label: String(n) }))
       }
     ];
     openModal("Edit Campaign Info", fields, async (values) => {
@@ -1207,6 +1225,12 @@ Keep it concise — 4 bullet points, one short sentence each.`;
         patch[key] = values[key]?.trim();
       }
       patch.session_type = values.session_type === "one_shot" ? "one_shot" : "campaign";
+      // Written only when changed or already stored, so saving other fields doesn't add it to
+      // every note that has never touched the oracle.
+      const chaosFactor = normalizeChaosFactor(values.chaos_factor);
+      if (fm.chaos_factor !== undefined || chaosFactor !== normalizeChaosFactor(fm.chaos_factor)) {
+        patch.chaos_factor = chaosFactor;
+      }
       await updateActiveFrontmatter(patch);
       flashStatus("Campaign info updated.");
     });
@@ -1459,39 +1483,59 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     }
   }
 
+  /** Records a Toolkit result in the session log (the History tab), then hands it back. */
+  function logToolkit<T extends string | undefined>(tool: string, text: T, detail?: string, insertable = true): T {
+    if (text) setToolkitLog((log) => addLogEntry(log, { tool, text, detail, insertable }));
+    return text;
+  }
+
   function toolkitRollDice(expr: string): string | undefined {
     const result = rollExpression(expr);
     if (!result) {
       flashStatus(`Sybyl: couldn't parse dice expression "${expr}".`);
       return undefined;
     }
-    return formatRollResult(result);
+    return logToolkit("Dice", formatRollResult(result));
+  }
+
+  /** Sets the Toolkit card deck, saving it with the open note so the shuffle survives a restart.
+   * With no note open, the deck lasts for the session only. */
+  function updateDeck(next: DeckSession) {
+    setDeckSession(next);
+    const file = activeFileRef.current;
+    if (file && vaultPath) {
+      saveDeckState(vaultPath, file.name, next).catch((error) => {
+        flashStatus(`Sybyl error: couldn't save the card deck: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
   }
 
   function toolkitDrawCard(): string | undefined {
     const session = deckSession ?? createDeckSession("standard");
     const { session: nextSession, card } = drawCard(session);
-    setDeckSession(nextSession);
-    return card;
+    updateDeck(nextSession);
+    return logToolkit("Cards", card, session.type === "tarot" ? "Tarot" : undefined);
   }
 
   function toolkitReshuffleDeck() {
     if (!deckSession) return;
-    setDeckSession(reshuffleDeck(deckSession));
+    updateDeck(reshuffleDeck(deckSession));
   }
 
   function toolkitSetDeckType(type: DeckType) {
-    setDeckSession(createDeckSession(type));
+    updateDeck(createDeckSession(type));
   }
 
   function toolkitGenerateWord(categoryId: string): string | undefined {
-    return generateWord(categoryId);
+    const category = WORD_CATEGORIES.find((c) => c.id === categoryId)?.label;
+    return logToolkit("Words", generateWord(categoryId), category);
   }
 
   async function toolkitRollTable(path: string): Promise<string | undefined> {
     try {
       const content = await readTableFile(path);
-      return rollTable(parseTableEntries(content));
+      const table = tableFiles.find((t) => t.path === path)?.name;
+      return logToolkit("Tables", rollTable(parseTableEntries(content)), table);
     } catch (error) {
       flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
@@ -1503,13 +1547,31 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     insertFormatted(text, "cursor");
   }
 
+  /** The Toolkit oracle's Chaos Factor: the open note's own (saved as `chaos_factor`), or a
+   * session-only value while no note is open, since the Toolkit works without one. */
+  const chaosFactor = activeFile ? normalizeChaosFactor(activeFile.fm.chaos_factor) : oracleChaosFactor;
+
+  function setChaosFactor(value: number) {
+    // The number input reports transient values while typing (empty, 0, 12...); keep only valid ones.
+    if (!Number.isInteger(value) || value < 1 || value > 9) return;
+    if (!activeFileRef.current) {
+      setOracleChaosFactor(value);
+      return;
+    }
+    if (value === chaosFactor) return;
+    updateActiveFrontmatter({ chaos_factor: value }).catch((error) => {
+      flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
   function toolkitAskOracle(likelihoodId: string): string | undefined {
-    const result = askOracle(likelihoodId, oracleChaosFactor);
+    const result = askOracle(likelihoodId, chaosFactor);
     if (!result) {
       flashStatus(`Sybyl: unknown oracle likelihood "${likelihoodId}".`);
       return undefined;
     }
-    return formatOracleResult(result);
+    const likelihood = ORACLE_LIKELIHOODS.find((l) => l.id === likelihoodId)?.label;
+    return logToolkit("Oracle", formatOracleResult(result), likelihood);
   }
 
   function toolkitSetCustomDeck(folder: DeckFolder) {
@@ -1529,6 +1591,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     const { session, card } = drawCustomCard(customDeckSession);
     setCustomDeckSession(session);
     if (!card) return undefined;
+    // Logged by file name: an image has no text form to insert into a note.
+    logToolkit("Custom Deck", card.split(/[\\/]/).pop() ?? card, undefined, false);
     try {
       return { path: card, dataUri: await imageToDataUri(card) };
     } catch (error) {
@@ -1543,7 +1607,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
   }
 
   function toolkitCutUp(text: string, mode: CutUpMode): string | undefined {
-    return cutUpText(text, mode);
+    return logToolkit("Cut-up", cutUpText(text, mode));
   }
 
   async function toolkitLoadTableText(path: string): Promise<string | undefined> {
@@ -1824,8 +1888,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
                     onRollTable={toolkitRollTable}
                     onRefreshTables={() => vaultPath && refreshTableFiles(vaultPath)}
                     onInsert={toolkitInsert}
-                    chaosFactor={oracleChaosFactor}
-                    onSetChaosFactor={setOracleChaosFactor}
+                    chaosFactor={chaosFactor}
+                    onSetChaosFactor={setChaosFactor}
                     onAskOracle={toolkitAskOracle}
                     deckFolders={deckFolders}
                     customDeckSession={customDeckSession}
@@ -1835,13 +1899,15 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
                     onReshuffleCustomDeck={toolkitReshuffleCustomDeck}
                     onCutUp={toolkitCutUp}
                     onLoadTableText={toolkitLoadTableText}
+                    log={toolkitLog}
+                    onClearLog={() => setToolkitLog([])}
                   />
                 ) : null
               },
               { id: "dashboard", label: "Dashboard", content: activeFile ? <DashboardPanel body={body} /> : null },
               {
                 id: "info",
-                label: "Campaign Info",
+                label: "Info",
                 content: activeFile ? <CampaignInfoPanel fm={activeFile.fm} onEdit={cmdEditCampaignInfo} /> : null
               }
             ]}

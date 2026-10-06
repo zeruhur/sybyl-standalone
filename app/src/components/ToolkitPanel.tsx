@@ -5,10 +5,11 @@ import { TableFile } from "../lib/toolkit/tables";
 import { ORACLE_LIKELIHOODS } from "../lib/toolkit/oracleEngine";
 import { CustomDeckSession, DeckFolder } from "../lib/toolkit/customDeckEngine";
 import { CutUpMode } from "../lib/toolkit/cutup";
+import { ToolkitLogEntry } from "../lib/toolkit/history";
 
 const QUICK_DICE = ["d4", "d6", "d8", "d10", "d12", "d20", "d%"];
 
-type ToolkitTab = "dice" | "oracle" | "cards" | "custom-deck" | "words" | "cutup" | "tables";
+type ToolkitTab = "dice" | "oracle" | "cards" | "custom-deck" | "words" | "cutup" | "tables" | "history";
 
 const TOOLKIT_TABS: { id: ToolkitTab; label: string }[] = [
   { id: "dice", label: "Dice" },
@@ -17,8 +18,13 @@ const TOOLKIT_TABS: { id: ToolkitTab; label: string }[] = [
   { id: "custom-deck", label: "Custom Deck" },
   { id: "words", label: "Words" },
   { id: "cutup", label: "Cut-up" },
-  { id: "tables", label: "Tables" }
+  { id: "tables", label: "Tables" },
+  { id: "history", label: "History" }
 ];
+
+function logTime(at: Date): string {
+  return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 interface ToolkitPanelProps {
   deckSession: DeckSession | null;
@@ -43,6 +49,9 @@ interface ToolkitPanelProps {
   onReshuffleCustomDeck: () => void;
   onCutUp: (text: string, mode: CutUpMode) => string | undefined;
   onLoadTableText: (path: string) => Promise<string | undefined>;
+  /** Every result from this session, newest first (see lib/toolkit/history.ts). */
+  log: ToolkitLogEntry[];
+  onClearLog: () => void;
 }
 
 export default function ToolkitPanel({
@@ -67,7 +76,9 @@ export default function ToolkitPanel({
   onDrawCustomCard,
   onReshuffleCustomDeck,
   onCutUp,
-  onLoadTableText
+  onLoadTableText,
+  log,
+  onClearLog
 }: ToolkitPanelProps) {
   const [diceExpr, setDiceExpr] = useState("2d6+2");
   const [diceResult, setDiceResult] = useState<string | undefined>(undefined);
@@ -138,7 +149,7 @@ export default function ToolkitPanel({
             className={`toolkit-tab${activeTab === tab.id ? " active" : ""}`}
             onClick={() => setActiveTab(tab.id)}
           >
-            {tab.label}
+            {tab.id === "history" && log.length > 0 ? `${tab.label} (${log.length})` : tab.label}
           </button>
         ))}
       </div>
@@ -177,7 +188,7 @@ export default function ToolkitPanel({
               <option key={l.id} value={l.id}>{l.label}</option>
             ))}
           </select>
-          <label>
+          <label title={canInsert ? "Chaos Factor, saved with this note" : "Chaos Factor for this session; open a note to save it with the note"}>
             CF
             <input
               type="number"
@@ -343,6 +354,38 @@ export default function ToolkitPanel({
             <span>{tableResult}</span>
             <button disabled={!canInsert} onClick={() => onInsert(tableResult)}>Insert</button>
           </div>
+        )}
+      </div>
+      )}
+
+      {activeTab === "history" && (
+      <div className="toolkit-section">
+        <div className="toolkit-history-header">
+          <h4>History</h4>
+          {log.length > 0 && <button onClick={onClearLog}>Clear</button>}
+        </div>
+        {log.length === 0 ? (
+          <div className="toolkit-empty">
+            Every roll, draw and result from this session collects here, newest first, so nothing is
+            lost just because it wasn't inserted.
+          </div>
+        ) : (
+          <ol className="toolkit-history">
+            {log.map((entry) => (
+              <li key={entry.id}>
+                <div className="toolkit-history-meta">
+                  {entry.tool}
+                  {entry.detail ? ` · ${entry.detail}` : ""} · {logTime(entry.at)}
+                </div>
+                <div className="toolkit-result">
+                  <span style={{ whiteSpace: "pre-line" }}>{entry.text}</span>
+                  {entry.insertable && (
+                    <button disabled={!canInsert} onClick={() => onInsert(entry.text)}>Insert</button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
         )}
       </div>
       )}
