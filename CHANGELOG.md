@@ -17,6 +17,9 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 - Each note keeps its own **card deck**: the Toolkit's draw and discard piles are saved with the
   note (in a hidden `.deck-state/` folder in the vault), so a campaign's shuffle survives a
   restart.
+- More **dice notation**: minimum and maximum per die (`4d6min3`, `4d6max3`), compounding
+  explosions (`2d6!!`), and re-rolls (`d6r`, `d6ro`, `4d10r<=3`). Modifiers can now be written in
+  any order (`5d10!k2` and `5d10k2!` both work), and they're highlighted on `d:` lines.
 
 ### Changed
 - The side panel no longer shows horizontal scrollbars. The Toolkit's tools wrap onto a second row

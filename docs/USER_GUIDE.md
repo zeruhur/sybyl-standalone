@@ -239,7 +239,11 @@ Click **Toolkit** in the command bar (no note required) to open the side panel's
 set of offline, deterministic tools — none of them call an AI provider:
 
 - **Dice** — full expression roller (`2d6+2`, `4d6kh3`, exploding `d6!`, dice-pool
-  successes/failures) plus one-tap quick buttons for d4–d20/d%.
+  successes/failures) plus one-tap quick buttons for d4–d20/d%. Also: minimum and maximum per
+  die (`4d6min3`, `4d6max3`), compounding (`2d6!!`, where re-rolls add onto the same die), and
+  re-rolls (`d6r` re-rolls 1s until something else comes up, `d6ro` re-rolls once,
+  `4d10r<=3` re-rolls anything 3 or under). Modifiers can be written in any order; they're
+  applied in the notation's standard order.
 - **Oracle** — a deterministic Yes/No oracle: pick a likelihood (Impossible…Certain) and a
   1–9 Chaos Factor, and it rolls 1d100 against a computed threshold, flagging exceptional results
   and random events. The Chaos Factor is saved with the open note (as `chaos_factor` in its
