@@ -246,7 +246,9 @@ set of offline, deterministic tools — none of them call an AI provider:
   frontmatter, also shown in Campaign Info and editable there), so each campaign keeps its own. It starts at 5 and
   only changes when you change it. With no note open, it applies to the current session only.
 - **Cards** — standard 52-card or full Tarot deck with a draw/discard pile that auto-reshuffles
-  when empty; Tarot reversals are decided per draw.
+  when empty; Tarot reversals are decided per draw. Each note keeps its own deck, saved in a hidden
+  `.deck-state/` folder in your vault, so a campaign's shuffle is still there after a restart.
+  With no note open, the deck lasts for the session only.
 - **Custom Deck** — draws images from `<vault>/decks/<name>/` (any folder of image files you add
   yourself). Preview-only — there's no Lonelog notation for an image, so draws can't be inserted.
 - **Words** — 8 categories of curated word generators (noun, verb, adjective, job, town name,

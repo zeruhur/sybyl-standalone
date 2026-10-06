@@ -14,6 +14,9 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 - A **History** tab in the Toolkit lists every roll, draw and result from the session, newest
   first, each with an Insert button, so a result isn't lost just because you didn't insert it
   right away. It keeps the last 200 and is cleared when you close the app (or with Clear).
+- Each note keeps its own **card deck**: the Toolkit's draw and discard piles are saved with the
+  note (in a hidden `.deck-state/` folder in the vault), so a campaign's shuffle survives a
+  restart.
 
 ### Changed
 - The side panel no longer shows horizontal scrollbars. The Toolkit's tools wrap onto a second row

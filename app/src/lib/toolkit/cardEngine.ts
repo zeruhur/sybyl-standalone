@@ -38,7 +38,7 @@ export function shuffle<T>(deck: T[]): T[] {
   return result;
 }
 
-function baseDeck(type: DeckType): string[] {
+export function baseDeck(type: DeckType): string[] {
   if (type === "tarot") return buildTarotDeck();
   return buildStandardDeck(type === "standard-jokers");
 }

@@ -32,6 +32,7 @@ import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
 import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
 import { generateWord, WORD_CATEGORIES } from "./lib/toolkit/wordGenerators";
 import { addLogEntry, ToolkitLogEntry } from "./lib/toolkit/history";
+import { deleteDeckState, loadDeckState, saveDeckState } from "./lib/toolkit/deckState";
 import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
 import { askOracle, formatOracleResult, normalizeChaosFactor, ORACLE_LIKELIHOODS } from "./lib/toolkit/oracleEngine";
 import {
@@ -304,6 +305,7 @@ export default function App() {
     setBody("");
     // The custom deck session holds image paths inside the old vault.
     setCustomDeckSession(null);
+    setDeckSession(null);
     await refreshFiles(picked);
     await refreshTableFiles(picked);
     await refreshDeckFolders(picked);
@@ -347,6 +349,12 @@ export default function App() {
     setFiles((prev) => prev.map((f) => (f.path === fresh.path ? fresh : f)));
     if (vaultPath) {
       void maybeAutoSnapshot(vaultPath, fresh);
+      // Each note has its own card deck; null (no saved deck) starts a fresh one on the next draw.
+      // Cleared right away so a draw before it loads can't save the previous note's deck here.
+      setDeckSession(null);
+      void loadDeckState(vaultPath, fresh.name).then((deck) => {
+        if (activeFileRef.current?.path === fresh.path) setDeckSession(deck);
+      });
     }
   }
 
@@ -558,10 +566,12 @@ export default function App() {
     try {
       await deleteVaultFile(target.path);
       await deleteSnapshots(vaultPath, target.name).catch(() => {});
+      await deleteDeckState(vaultPath, target.name).catch(() => {});
       if (activeFileRef.current?.path === target.path) {
         setActiveFile(null);
         activeFileRef.current = null;
         setBody("");
+        setDeckSession(null);
       }
       await refreshFiles(vaultPath);
       flashStatus(`Deleted: ${target.name}`);
@@ -1488,20 +1498,32 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     return logToolkit("Dice", formatRollResult(result));
   }
 
+  /** Sets the Toolkit card deck, saving it with the open note so the shuffle survives a restart.
+   * With no note open, the deck lasts for the session only. */
+  function updateDeck(next: DeckSession) {
+    setDeckSession(next);
+    const file = activeFileRef.current;
+    if (file && vaultPath) {
+      saveDeckState(vaultPath, file.name, next).catch((error) => {
+        flashStatus(`Sybyl error: couldn't save the card deck: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
+  }
+
   function toolkitDrawCard(): string | undefined {
     const session = deckSession ?? createDeckSession("standard");
     const { session: nextSession, card } = drawCard(session);
-    setDeckSession(nextSession);
+    updateDeck(nextSession);
     return logToolkit("Cards", card, session.type === "tarot" ? "Tarot" : undefined);
   }
 
   function toolkitReshuffleDeck() {
     if (!deckSession) return;
-    setDeckSession(reshuffleDeck(deckSession));
+    updateDeck(reshuffleDeck(deckSession));
   }
 
   function toolkitSetDeckType(type: DeckType) {
-    setDeckSession(createDeckSession(type));
+    updateDeck(createDeckSession(type));
   }
 
   function toolkitGenerateWord(categoryId: string): string | undefined {
