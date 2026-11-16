@@ -86,3 +86,9 @@ describe("serializeContext", () => {
     expect(serializeContext(parseLonelogContext(""))).toBe("");
   });
 });
+
+describe("tbl: lines (Lonelog v1.7)", () => {
+  it("count as beats", () => {
+    expect(parseLonelogContext("tbl: Loot -> A broken sword").recentBeats).toEqual(["tbl: Loot -> A broken sword"]);
+  });
+});

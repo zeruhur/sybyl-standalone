@@ -259,8 +259,15 @@ export function rollExpression(expr: string): DiceRollResult | undefined {
 /** Renders a roll result using the addon's `expr=total` convention (lonelog-dice-notation-addon.md
  * Part I), inserting a space before `=` whenever the expression contains `!` — the addon's own
  * documented ambiguity case (`2d6!=13` parses as a compare point, `2d6! =13` records a result). */
+/** Dice add-on v1.1: write a space before the result's `=` whenever the expression contains a
+ * compare point or ends with a modifier that accepts one, so the result can't be read as part of
+ * the expression (`2d6!=13` would mean "explode on not-13", `5d10>=7=3` is ambiguous). */
+export function needsSpaceBeforeResult(expression: string): boolean {
+  return /[!<>=]/.test(expression) || /(?:ro?|uo?|cs|cf)$/.test(expression);
+}
+
 export function formatRollResult(result: DiceRollResult): string {
   const value = result.isPool ? result.successes : result.total;
-  const sep = result.expression.includes("!") ? " =" : "=";
+  const sep = needsSpaceBeforeResult(result.expression) ? " =" : "=";
   return `${result.expression}${sep}${value}`;
 }

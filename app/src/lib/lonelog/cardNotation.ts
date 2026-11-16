@@ -1,5 +1,6 @@
-/** Lonelog Card Notation Add-on (v1.0.0) — full grammar (it's compact).
- * Recognizes/highlights card identities inside `d:` fields: standard 52-card deck
+/** Lonelog Card Notation Add-on (v1.1.0) — full grammar (it's compact).
+ * Recognizes/highlights card identities on `d:` and `tbl:` lines (v1.1 moved most draws to
+ * `tbl:`): standard 52-card deck
  * (+jokers, color shorthand), Tarot Major Arcana (M0-M21, reversed), and Tarot Minor
  * Arcana ({rank}{Wa|Cu|Sw|Pe}, reversed). Oracle-deck free-text names have no fixed
  * grammar per the spec and are intentionally not matched here. */
@@ -12,7 +13,9 @@ const TAROT_MINOR = "(?:10|[2-9]|[AKQ]|Pg|Kn)(?:Wa|Cu|Sw|Pe)r?";
 
 const CARD_TOKEN_SOURCE = `(?:${STANDARD_CARD}|${JOKER}|${TAROT_MAJOR}|${TAROT_MINOR}|${COLOR_SHORTHAND})`;
 
-export const CARD_TOKEN_REGEX = new RegExp(`\\b${CARD_TOKEN_SOURCE}\\b`, "g");
+/** v1.1: a card identity always follows `=` (`draw=4d`, `Past=5s`), which keeps `4d` (the four of
+ * diamonds) apart from a dice expression and stops words like "As" in prose from matching. */
+export const CARD_TOKEN_REGEX = new RegExp(`(?<==)${CARD_TOKEN_SOURCE}\\b`, "g");
 
 export function isCardToken(token: string): boolean {
   return new RegExp(`^${CARD_TOKEN_SOURCE}$`).test(token.trim());

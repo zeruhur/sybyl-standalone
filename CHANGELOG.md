@@ -6,6 +6,18 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 
 ## Unreleased
 
+### Changed
+- Updated for Lonelog v1.7 and the v1.1 Dice and Cards add-ons:
+  - Inserting a Toolkit card draw writes `draw=Qs` instead of a bare `Qs`, since a card now
+    always follows `=`. Cards and dice are highlighted on `tbl:` lines too (most draws are `tbl:`
+    now), and a word like "As" on a `d:` line is no longer mistaken for a card.
+  - Generate Adventure Seed writes a `tbl:` block (`gen:` was folded into `tbl:` in v1.7). Each
+    line reads `Premise: -> …`, which marks it as a result rather than a table entry.
+  - `tbl:` lines are highlighted in the editor like the other beat lines, and the AI sees them as
+    recent beats.
+  - Toolkit dice results put a space before `=` whenever the expression has a compare point or
+    ends in a re-roll, as the add-on now requires: `5d10>=7 =3`, not `5d10>=7=3`.
+
 ## v0.17.0 - 2026-10-06
 
 ### Added

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatRollResult, parseDiceExpression, rollExpression } from "./diceEngine";
+import { formatRollResult, needsSpaceBeforeResult, parseDiceExpression, rollExpression } from "./diceEngine";
 import { isDiceExpression } from "../lonelog/diceNotation";
 import { queueDice } from "../../test/random";
 
@@ -66,7 +66,7 @@ describe("rollExpression", () => {
     expect(result.isPool).toBe(true);
     expect(result.successes).toBe(2);
     expect(result.failures).toBe(1);
-    expect(formatRollResult(result)).toBe("5d10>=7f=1=2");
+    expect(formatRollResult(result)).toBe("5d10>=7f=1 =2");
   });
 
   it("keeps Fudge dice within -1..1", () => {
@@ -167,4 +167,13 @@ describe("engine and highlighter agree", () => {
     expect(parseDiceExpression(expr)).toBeDefined();
     expect(isDiceExpression(expr)).toBe(true);
   });
+});
+
+describe("needsSpaceBeforeResult (dice add-on v1.1)", () => {
+  it.each(["2d6!", "2d6!!", "5d10>=7", "10d6=6", "d6r", "d6ro", "2d6r<3", "4d6>4f<3"])("%s takes a space", (expr) =>
+    expect(needsSpaceBeforeResult(expr)).toBe(true)
+  );
+  it.each(["2d6+3", "4d6dl1", "2d20kh1", "d%", "4dF+2", "d6min3"])("%s does not", (expr) =>
+    expect(needsSpaceBeforeResult(expr)).toBe(false)
+  );
 });

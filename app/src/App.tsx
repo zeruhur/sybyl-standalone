@@ -1514,7 +1514,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     const session = deckSession ?? createDeckSession("standard");
     const { session: nextSession, card } = drawCard(session);
     updateDeck(nextSession);
-    return logToolkit("Cards", card, session.type === "tarot" ? "Tarot" : undefined);
+    // Cards add-on v1.1: a card identity always follows `=` (`tbl: draw=Qs -> …`).
+    return logToolkit("Cards", `draw=${card}`, session.type === "tarot" ? "Tarot" : undefined);
   }
 
   function toolkitReshuffleDeck() {

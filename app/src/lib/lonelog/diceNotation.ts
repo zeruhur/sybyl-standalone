@@ -1,5 +1,6 @@
-/** Lonelog Dice Notation Add-on (v1.0.0): Part I plus the first slice of Part II.
- * Grammar, not engine: this recognizes/highlights dice expressions inside `d:` fields, it does
+/** Lonelog Dice Notation Add-on (v1.1.0): Part I plus the first slice of the Appendix grammar.
+ * (Part I's Savage Worlds example now uses a group roll, `{d8!, d6!}kh1`, which isn't covered.)
+ * Grammar, not engine: this recognizes/highlights dice expressions on `d:`/`tbl:` lines, it does
  * not roll them (toolkit/diceEngine.ts does). Covers NdS / d% / dF, min/max, exploding and
  * compounding (each with an optional compare point), re-roll (`r`/`ro`), keep/drop
  * highest-lowest, dice-pool target success/failure, and a trailing flat modifier. Modifiers may

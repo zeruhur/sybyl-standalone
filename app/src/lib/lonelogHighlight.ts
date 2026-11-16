@@ -14,7 +14,7 @@ const tagMatcher = new MatchDecorator({
 });
 
 const beatMatcher = new MatchDecorator({
-  regexp: /^(@|\?|->|=>|d:)/gm,
+  regexp: /^(@|\?|->|=>|d:|tbl:)/gm,
   decoration: (match) => Decoration.mark({ class: `cm-lonelog-beat cm-lonelog-beat-${beatClass(match[1])}` })
 });
 
@@ -25,6 +25,7 @@ function beatClass(symbol: string): string {
     case "->": return "result";
     case "=>": return "consequence";
     case "d:": return "roll";
+    case "tbl:": return "table";
     default: return "other";
   }
 }
@@ -50,7 +51,7 @@ function buildPlugin(matcher: MatchDecorator) {
 // a long log: scene headers get a heading treatment, beat lines a colored left rule. The patterns
 // mirror sceneMatcher/beatMatcher without the global flag, since each is tested against one line.
 const SCENE_LINE = /^#{0,6}\s*(?:T\d+-)?S\d+[\w.]*\s*\*[^*]*\*/;
-const BEAT_LINE = /^(@|\?|->|=>|d:)/;
+const BEAT_LINE = /^(@|\?|->|=>|d:|tbl:)/;
 
 function buildLineDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
@@ -88,7 +89,7 @@ const lineClassPlugin = ViewPlugin.fromClass(
   }
 );
 
-const DICE_LINE_PREFIX = /^\s*d:/;
+const DICE_LINE_PREFIX = /^\s*(?:d|tbl):/;
 
 function buildDiceCardDecorations(view: EditorView): DecorationSet {
   const matches: { from: number; to: number; className: string }[] = [];

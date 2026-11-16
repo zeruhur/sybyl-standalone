@@ -15,6 +15,7 @@
   --beat-result: #7fd88f;
   --beat-consequence: #6fb8e0;
   --beat-roll: #e08f6f;
+  --beat-table: #d08fc8;
 
   font-family: "Iowan Old Style", "Georgia", "Segoe UI", system-ui, sans-serif;
   color: var(--text);
@@ -42,6 +43,7 @@
   --beat-result: #2f8f4e;
   --beat-consequence: #1f6fa5;
   --beat-roll: #a1451f;
+  --beat-table: #8e3f86;
 }
 
 /* The Lonelog syntax-highlight palette below is tuned pastel-bright for the dark editor
@@ -58,6 +60,7 @@
 :root[data-theme="light"] .cm-lonelog-beat-result { color: #2f8f4e; }
 :root[data-theme="light"] .cm-lonelog-beat-consequence { color: #1f6fa5; }
 :root[data-theme="light"] .cm-lonelog-beat-roll { color: #a1451f; }
+:root[data-theme="light"] .cm-lonelog-beat-table { color: #8e3f86; }
 :root[data-theme="light"] .cm-lonelog-dice { color: #6d4fd1; }
 :root[data-theme="light"] .cm-lonelog-card { color: #9c7a00; }
 
@@ -850,6 +853,7 @@ html, body, #root {
 .cm-lonelog-beat-result { color: #7fd88f; }
 .cm-lonelog-beat-consequence { color: #6fb8e0; }
 .cm-lonelog-beat-roll { color: #e08f6f; }
+.cm-lonelog-beat-table { color: #d08fc8; }
 .cm-lonelog-dice {
   color: #c9a3f5;
   font-weight: 600;
@@ -1511,6 +1515,7 @@ input:focus, select:focus {
 .editor-host .cm-lonelog-line-result { border-left-color: var(--beat-result); }
 .editor-host .cm-lonelog-line-consequence { border-left-color: var(--beat-consequence); }
 .editor-host .cm-lonelog-line-roll { border-left-color: var(--beat-roll); }
+.editor-host .cm-lonelog-line-table { border-left-color: var(--beat-table); }
 
 @media (max-width: 720px) {
   .note-header {

@@ -33,7 +33,7 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
   const clockRe = /\[Clock:([^\]]+)\]/g;
   const trackRe = /\[Track:([^\]]+)\]/g;
   const pcRe = /\[PC:([^\]]+)\]/g;
-  const beatRe = /^(@|\?|d:|->|=>)/;
+  const beatRe = /^(@|\?|d:|tbl:|->|=>)/;
   const skipRe = /^(#|---|>\s*\[|\[N:|\[L:|\[Thread:|\[Clock:|\[Track:|\[PC:)/;
 
   const npcMap = new Map<string, string>();
