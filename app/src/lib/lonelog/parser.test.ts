@@ -92,3 +92,21 @@ describe("tbl: lines (Lonelog v1.7)", () => {
     expect(parseLonelogContext("tbl: Loot -> A broken sword").recentBeats).toEqual(["tbl: Loot -> A broken sword"]);
   });
 });
+
+describe("storyline point of view (Lonelog v1.7 §5.3.3)", () => {
+  const log = ["T1-S1 *Lighthouse tower, dusk* @(Alex)", "T2-S1 *City archives* @(Jordan)", "@ Search the shelves", "T1-S2 *Back to the lighthouse*", "@ Climb"].join("\n");
+
+  it("finds the current storyline's POV, declared on its first scene line", () => {
+    expect(parseLonelogContext(log).pov).toBe("Alex");
+    expect(parseLonelogContext(`${log}\nT2-S2 *Archives, later*`).pov).toBe("Jordan");
+  });
+
+  it("tells the model who a bare @ means", () => {
+    expect(serializeContext(parseLonelogContext(log))).toContain('Point of view in this storyline: Alex (a bare "@" action is Alex\'s)');
+  });
+
+  it("has no POV outside storylines or without a declaration", () => {
+    expect(parseLonelogContext("S1 *Docks*\n@ Act").pov).toBe("");
+    expect(parseLonelogContext("T3-S1 *Nowhere*").pov).toBe("");
+  });
+});

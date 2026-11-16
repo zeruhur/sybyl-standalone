@@ -13,7 +13,8 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
   remove: async (path: string) => void disk.delete(path)
 }));
 
-const { deckStatePath, deleteDeckState, loadDeckState, parseDeck, saveDeckState, serializeDeck } = await import("./deckState");
+const { customDeckStatePath, deckStatePath, deleteDeckState, loadDeckState, parseCustomDeck, parseDeck, saveCustomDeckState, saveDeckState, serializeCustomDeck, serializeDeck } =
+  await import("./deckState");
 
 beforeEach(() => disk.clear());
 
@@ -63,5 +64,34 @@ describe("saved decks", () => {
     await saveDeckState("/vault", "mara.md", createDeckSession("standard"));
     await deleteDeckState("/vault", "mara.md");
     expect(await loadDeckState("/vault", "mara.md")).toBeNull();
+  });
+});
+
+describe("custom image decks", () => {
+  const folder = { name: "omens", path: "/vault/decks/omens" };
+  const images = ["/vault/decks/omens/a.png", "/vault/decks/omens/b.png", "/vault/decks/omens/c.png"];
+  const session = { name: "omens", drawPile: [images[2], images[0]], discardPile: [images[1]] };
+
+  it("round-trips a deck by file name", () => {
+    expect(serializeCustomDeck(session)).not.toContain("/vault");
+    expect(parseCustomDeck(serializeCustomDeck(session), folder, images)).toEqual(session);
+  });
+
+  it("starts fresh when the folder's images changed or it's another deck", () => {
+    const raw = serializeCustomDeck(session);
+    expect(parseCustomDeck(raw, folder, [...images, "/vault/decks/omens/d.png"])).toBeNull();
+    expect(parseCustomDeck(raw, folder, images.slice(1))).toBeNull();
+    expect(parseCustomDeck(raw, { ...folder, name: "other" }, images)).toBeNull();
+    expect(parseCustomDeck("nope", folder, images)).toBeNull();
+  });
+
+  it("is saved, cleared, and deleted with the note", async () => {
+    await saveCustomDeckState("/vault", "Campaign.md", session);
+    expect(disk.has(customDeckStatePath("/vault", "Campaign.md"))).toBe(true);
+    await saveCustomDeckState("/vault", "Campaign.md", null);
+    expect(disk.has(customDeckStatePath("/vault", "Campaign.md"))).toBe(false);
+    await saveCustomDeckState("/vault", "Campaign.md", session);
+    await deleteDeckState("/vault", "Campaign.md");
+    expect(disk.size).toBe(0);
   });
 });

@@ -4,6 +4,8 @@ import { isAsideMetaNote, LINE_START_BEAT, splitCompactBeats } from "./beats";
 export interface LonelogContext {
   lastSceneId: string;
   lastSceneDesc: string;
+  /** The current storyline's point-of-view character, who a bare `@` means (v1.7 §5.3.3). */
+  pov: string;
   activeNPCs: string[];
   activeLocations: string[];
   activeThreads: string[];
@@ -37,6 +39,7 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
   const ctx: LonelogContext = {
     lastSceneId: "",
     lastSceneDesc: "",
+    pov: "",
     activeNPCs: [],
     activeLocations: [],
     activeThreads: [],
@@ -67,6 +70,16 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
     }
   }
 
+  // A storyline declares its POV once, at the end of its first scene line (`T2-S1 *City* @(Jordan)`),
+  // which may be long before the window, so the whole log is searched.
+  const storyline = /^(T\d+)-/.exec(ctx.lastSceneId)?.[1];
+  if (storyline) {
+    for (const rawLine of lines) {
+      const m = /^(?:#+\s+)?(T\d+)-S\d+[\w.]*\s*\*[^*]*\*\s*@\(([^)]+)\)/.exec(rawLine.trim());
+      if (m && m[1] === storyline) ctx.pov = m[2].trim();
+    }
+  }
+
   let windowStart = 0;
   for (let i = 0; i < lines.length - window.length; i++) {
     windowStart = bodyWithoutFM.indexOf("\n", windowStart) + 1;
@@ -91,6 +104,7 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
 export function serializeContext(ctx: LonelogContext): string {
   const lines: string[] = [];
   if (ctx.lastSceneId) lines.push(`Current scene: ${ctx.lastSceneId} *${ctx.lastSceneDesc}*`);
+  if (ctx.pov) lines.push(`Point of view in this storyline: ${ctx.pov} (a bare "@" action is ${ctx.pov}'s)`);
   if (ctx.pcState.length) lines.push(`PC: ${ctx.pcState.map((state) => `[PC:${state}]`).join(" ")}`);
   if (ctx.activeNPCs.length) lines.push(`NPCs: ${ctx.activeNPCs.map((state) => `[N:${state}]`).join(" ")}`);
   if (ctx.activeLocations.length) {

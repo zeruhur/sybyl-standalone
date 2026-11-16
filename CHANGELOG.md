@@ -31,7 +31,17 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 - Meta notes such as `(note: …)`, `(todo: …)` and `(retcon: …)` are shown dimmed. Asides are no
   longer sent to the AI as part of the story; `(retcon: …)` and `(interp: …)` still are.
 
+- In parallel storylines, the AI is told whose storyline it is: the POV character declared on the
+  storyline's first scene line (`T2-S1 *City archives* @(Jordan)`), so it knows who a bare `@` means.
+- The Custom Deck is saved with each note like the card deck, so its shuffle survives a restart. If
+  the deck folder's images have changed since, the note starts a fresh shuffle.
+
 ### Changed
+- The AI's notation instructions follow Lonelog v1.7. It's told that `->` marks outcomes only, and
+  not to write `d:`/`tbl:` lines or meta notes. It's also told how to read the log: tags show
+  current state, `d:` gives verdicts and `tbl:` gives content, and `(retcon: …)`/`(interp: …)`
+  notes take precedence. This changes the system prompt, so the first request on each note
+  rebuilds the Anthropic prompt cache once.
 - Toolkit results insert as full Lonelog v1.7 lines instead of bare values:
   - Dice: `d: 2d6+3=12`.
   - Tables: `tbl: Loot -> A broken sword`.

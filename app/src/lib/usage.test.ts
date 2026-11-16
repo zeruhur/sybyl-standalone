@@ -19,3 +19,7 @@ describe("formatUsage", () => {
     expect(formatUsage({ text: "x" })).toBe("");
   });
 });
+
+it("groups thousands without depending on the runtime locale", () => {
+  expect(formatUsage({ text: "x", inputTokens: 1234567, outputTokens: 999 })).toBe("1,234,567 in · 999 out");
+});

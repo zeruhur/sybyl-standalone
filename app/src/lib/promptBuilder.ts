@@ -7,10 +7,16 @@ LONELOG NOTATION MODE IS ACTIVE.
 When generating consequences, oracle interpretations, or scene text:
 - Consequences must start with "=>" (one per line for multiple consequences)
 - Oracle answers must start with "->"
+- "->" marks an outcome and nothing else; never use it as an arrow inside prose
 - Do not use blockquote markers (">")
 - Do not add narrative headers or labels like "[Result]" or "[Scene]"
 - For scene descriptions: plain prose only, 2-3 lines, no symbol prefix
-- Do not invent or suggest Lonelog tags ([N:], [L:], etc.) - the player manages those
+- Do not invent or suggest Lonelog tags ([N:], [L:], etc.), "d:" or "tbl:" lines, or meta notes in parentheses - the player manages those
+
+Reading the log context:
+- Each tag shows an element's current state; a later tag updates an earlier one rather than replacing it.
+- "d:" lines are rolls that gave a verdict; "tbl:" lines are results from tables, generators or card draws that gave content. Treat both as established.
+- "(retcon: ...)" corrects an earlier line and "(interp: ...)" records how the player read a result. Follow both over the line they refer to.
 
 Generate only the symbol-prefixed content lines. The formatter handles wrapping.
 `.trim();

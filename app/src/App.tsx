@@ -32,7 +32,7 @@ import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
 import { createDeckSession, DeckSession, DeckType, drawCard, formatDrawLines, formatReshuffleTag, reshuffleDeck } from "./lib/toolkit/cardEngine";
 import { generateWord, WORD_CATEGORIES } from "./lib/toolkit/wordGenerators";
 import { addLogEntry, ToolkitLogEntry } from "./lib/toolkit/history";
-import { deleteDeckState, loadDeckState, saveDeckState } from "./lib/toolkit/deckState";
+import { deleteDeckState, loadCustomDeckState, loadDeckState, saveCustomDeckState, saveDeckState } from "./lib/toolkit/deckState";
 import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
 import { parseInlineTables, rollInlineTable, tableDisplayName } from "./lib/lonelog/inlineTables";
 import { askOracle, formatOracleResult, normalizeChaosFactor, ORACLE_LIKELIHOODS } from "./lib/toolkit/oracleEngine";
@@ -358,6 +358,14 @@ export default function App() {
       void loadDeckState(vaultPath, fresh.name).then((deck) => {
         if (activeFileRef.current?.path === fresh.path) setDeckSession(deck);
       });
+      // Its custom image deck too, matched against the deck folder's current images.
+      setCustomDeckSession(null);
+      void listDeckFolders(vaultPath)
+        .then((folders) => loadCustomDeckState(vaultPath, fresh.name, folders))
+        .then((deck) => {
+          if (activeFileRef.current?.path === fresh.path) setCustomDeckSession(deck);
+        })
+        .catch(() => {});
     }
   }
 
@@ -1603,22 +1611,33 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     return logToolkit("Oracle", formatOracleResult(result), likelihood);
   }
 
+  /** Sets the custom image deck, saving it with the open note like the card deck. */
+  function updateCustomDeck(next: CustomDeckSession | null) {
+    setCustomDeckSession(next);
+    const file = activeFileRef.current;
+    if (file && vaultPath) {
+      saveCustomDeckState(vaultPath, file.name, next).catch((error) => {
+        flashStatus(`Sybyl error: couldn't save the custom deck: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
+  }
+
   function toolkitSetCustomDeck(folder: DeckFolder) {
     (async () => {
       const session = await createCustomDeckSession(folder);
       if (!session) {
         flashStatus(`Sybyl: no images found in deck "${folder.name}".`);
-        setCustomDeckSession(null);
+        updateCustomDeck(null);
         return;
       }
-      setCustomDeckSession(session);
+      updateCustomDeck(session);
     })();
   }
 
   async function toolkitDrawCustomCard(): Promise<{ path: string; dataUri: string } | undefined> {
     if (!customDeckSession) return undefined;
     const { session, card } = drawCustomCard(customDeckSession);
-    setCustomDeckSession(session);
+    updateCustomDeck(session);
     if (!card) return undefined;
     // Logged by file name: an image has no text form to insert into a note.
     logToolkit("Custom Deck", card.split(/[\\/]/).pop() ?? card, undefined, false);
@@ -1632,7 +1651,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
 
   function toolkitReshuffleCustomDeck() {
     if (!customDeckSession) return;
-    setCustomDeckSession(reshuffleCustomDeck(customDeckSession));
+    updateCustomDeck(reshuffleCustomDeck(customDeckSession));
   }
 
   function toolkitCutUp(text: string, mode: CutUpMode): string | undefined {

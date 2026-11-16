@@ -97,7 +97,6 @@ export default function ToolkitPanel({
   const [tableResult, setTableResult] = useState<string | undefined>(undefined);
   const [oracleLikelihood, setOracleLikelihood] = useState("fifty_fifty");
   const [oracleResult, setOracleResult] = useState<string | undefined>(undefined);
-  const [customDeckPath, setCustomDeckPath] = useState("");
   const [customCardDraw, setCustomCardDraw] = useState<{ path: string; dataUri: string } | undefined>(undefined);
   const [cutupText, setCutupText] = useState("");
   const [cutupMode, setCutupMode] = useState<CutUpMode>("words");
@@ -131,7 +130,6 @@ export default function ToolkitPanel({
   }
 
   function setCustomDeck(path: string) {
-    setCustomDeckPath(path);
     setCustomCardDraw(undefined);
     const folder = deckFolders.find((f) => f.path === path);
     if (folder) onSetCustomDeck(folder);
@@ -258,7 +256,7 @@ export default function ToolkitPanel({
         ) : (
           <>
             <div className="toolkit-row">
-              <select value={customDeckPath} onChange={(e) => setCustomDeck(e.target.value)}>
+              <select value={deckFolders.find((f) => f.name === customDeckSession?.name)?.path ?? ""} onChange={(e) => setCustomDeck(e.target.value)}>
                 <option value="">Choose a deck...</option>
                 {deckFolders.map((f) => (
                   <option key={f.path} value={f.path}>{f.name}</option>

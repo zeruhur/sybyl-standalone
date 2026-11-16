@@ -268,6 +268,8 @@ set of offline, deterministic tools — none of them call an AI provider:
   With no note open, the deck lasts for the session only.
 - **Custom Deck** — draws images from `<vault>/decks/<name>/` (any folder of image files you add
   yourself). Preview-only — there's no Lonelog notation for an image, so draws can't be inserted.
+  Like the card deck, each note keeps its own shuffle across restarts; if you add or remove images
+  in the folder, the note starts a fresh shuffle.
 - **Words** — 8 categories of curated word generators (noun, verb, adjective, job, town name,
   etc.) for quick naming.
 - **Cut-up** — the Burroughs cut-up technique: shuffles a block of text word-by-word or
