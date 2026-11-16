@@ -94,3 +94,20 @@ describe("appendLogLine", () => {
     expect(appendLogLine("```\n@ Sneak", "=> Seen", true).insert).toBe("\n\n```\n=> Seen\n```\n");
   });
 });
+
+describe("rollLogText with the full dice grammar", () => {
+  it("rolls a group roll as one expression", () => {
+    queueDice(6, [5, 3]);
+    expect(rollLogText("Fighting {d6, d6}kh1 -> ?")).toBe("Fighting {d6, d6}kh1=5 -> ?");
+  });
+
+  it("rolls the arithmetic around a dice term", () => {
+    queueDice(6, [4]);
+    expect(rollLogText("Damage (1d6+2)*3 vs 10")).toBe("Damage (1d6+2)*3=18 vs 10");
+  });
+
+  it("rolls percentile dice", () => {
+    queueDice(100, [47]);
+    expect(rollLogText("d% vs 50")).toBe("d%=47 vs 50");
+  });
+});

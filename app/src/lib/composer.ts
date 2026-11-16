@@ -77,11 +77,25 @@ export function rollLogText(text: string): string {
   const regex = new RegExp(DICE_TOKEN_REGEX.source, "g");
   const match = regex.exec(text);
   if (!match) return text;
-  const after = text.slice(match.index + match[0].length);
-  if (/^\s*(?:\[[^\]]*\])?\s*=/.test(after)) return text;
+  const tokenEnd = match.index + match[0].length;
+  if (/^\s*(?:\[[^\]]*\])?\s*=/.test(text.slice(tokenEnd))) return text;
+  // A term inside arithmetic (`(1d6+2)*3`) is rolled as the whole expression around it: the run of
+  // non-space characters it sits in, when that run is a valid expression. A group roll may
+  // contain spaces, so it's taken as matched.
+  if (!match[0].startsWith("{")) {
+    let start = match.index;
+    let end = tokenEnd;
+    while (start > 0 && !/\s/.test(text[start - 1])) start--;
+    while (end < text.length && !/\s/.test(text[end])) end++;
+    const run = text.slice(start, end);
+    if (run !== match[0] && !/[=[\]]/.test(run)) {
+      const result = rollExpression(run);
+      if (result) return text.slice(0, start) + formatRollResult(result) + text.slice(end);
+    }
+  }
   const result = rollExpression(match[0]);
   if (!result) return text;
-  return text.slice(0, match.index) + formatRollResult(result) + after;
+  return text.slice(0, match.index) + formatRollResult(result) + text.slice(tokenEnd);
 }
 
 /** The Lonelog line a log-mode intent records. */

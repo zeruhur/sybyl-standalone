@@ -7,6 +7,12 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 ## Unreleased
 
 ### Added
+- The dice roller covers the whole Dice Notation add-on: penetrating dice (`2d6!p`), unique
+  results (`2d10u`), critical marks (`cs`/`cf`), sorting (`s`/`sd`), dropping both ends at once
+  (`4d10dh1dl2`), arithmetic with brackets and `* / % ^`, and group rolls such as the Savage Worlds
+  `{d8!, d6!}kh1`. The editor highlights them all, and a group roll or a bracketed expression
+  typed in the composer (`d: Damage (1d6+2)*3`) is rolled as a whole. `d%` is now highlighted and
+  rolled from a log line too; it wasn't before.
 - The Toolkit's Tables tab rolls on tables written in the note itself: `tbl: Name (d6)` with
   numbered entries (ranges like `1-2:` and `d66` work), or a list such as
   `tbl: Mood [Tense, Hopeful, Uncanny]`. The result is a Lonelog line,

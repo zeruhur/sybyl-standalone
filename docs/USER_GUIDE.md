@@ -252,7 +252,11 @@ set of offline, deterministic tools — none of them call an AI provider:
   die (`4d6min3`, `4d6max3`), compounding (`2d6!!`, where re-rolls add onto the same die), and
   re-rolls (`d6r` re-rolls 1s until something else comes up, `d6ro` re-rolls once,
   `4d10r<=3` re-rolls anything 3 or under). Modifiers can be written in any order; they're
-  applied in the notation's standard order.
+  applied in the notation's standard order. Also: penetrating dice (`2d6!p`, each re-roll counts
+  one less), unique results (`2d10u`), critical marks (`2d20cs`, `d20cf`), sorting (`4d6s`,
+  `4d6sd`), dropping both ends (`4d10dh1dl2`), arithmetic (`(1d6+2)*3`, `2d10/d20`, `3d(2*6)`),
+  and group rolls: `{d8!, d6!}kh1` keeps the higher of a Savage Worlds trait die and Wild Die,
+  `{3d20+5}>40` counts the sub-rolls that beat 40.
 - **Oracle** — a deterministic Yes/No oracle: pick a likelihood (Impossible…Certain) and a
   1–9 Chaos Factor, and it rolls 1d100 against a computed threshold, flagging exceptional results
   and random events. The Chaos Factor is saved with the open note (as `chaos_factor` in its
