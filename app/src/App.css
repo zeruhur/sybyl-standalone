@@ -56,6 +56,8 @@
 :root[data-theme="light"] .cm-lonelog-tag-thread { color: #a1601f; }
 :root[data-theme="light"] .cm-lonelog-tag-clock { color: #b13030; }
 :root[data-theme="light"] .cm-lonelog-tag-track { color: #5c5ca1; }
+:root[data-theme="light"] .cm-lonelog-tag-timer { color: #b13030; }
+:root[data-theme="light"] .cm-lonelog-tag-e { color: #8a6d10; }
 :root[data-theme="light"] .cm-lonelog-beat-question { color: #8a6d10; }
 :root[data-theme="light"] .cm-lonelog-beat-result { color: #2f8f4e; }
 :root[data-theme="light"] .cm-lonelog-beat-consequence { color: #1f6fa5; }
@@ -845,6 +847,8 @@ html, body, #root {
 .cm-lonelog-tag-thread { color: #e0a86f; }
 .cm-lonelog-tag-clock { color: #e06f6f; }
 .cm-lonelog-tag-track { color: #a8a8e0; }
+.cm-lonelog-tag-timer { color: #e06f6f; }
+.cm-lonelog-tag-e { color: #e0c56f; }
 .cm-lonelog-beat {
   font-weight: 600;
 }

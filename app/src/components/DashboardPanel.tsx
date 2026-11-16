@@ -62,6 +62,17 @@ export default function DashboardPanel({ body }: DashboardPanelProps) {
           <ProgressRow key={t.name} item={t} />
         ))}
       </div>
+      {dashboard.timers.length > 0 && (
+        <div className="dashboard-section">
+          <h4>Timers</h4>
+          {dashboard.timers.map((t) => (
+            <div className="dashboard-thread-row" key={t.name}>
+              <span className="dashboard-thread-name">{t.name}</span>
+              <span className="dashboard-thread-state">{t.current}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

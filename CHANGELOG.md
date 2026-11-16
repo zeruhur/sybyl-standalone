@@ -7,6 +7,15 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 ## Unreleased
 
 ### Changed
+- Tags now follow Lonelog v1.7's update rules, so a later tag changes the earlier state instead
+  of replacing it. `[PC:Alex|HP-2]` lowers HP and keeps the PC's other stats. `[N:Jonah|-injured]`,
+  `[N:Jonah|friendly>hostile]`, `status:captured`, `×4` and `[Clock:Alarm+1]` all work, and so do
+  tags split across several lines. This applies to what the AI is told about the scene, the
+  Dashboard and the PCs in Campaign Info. A PC's or NPC's state now carries over from earlier in
+  the log, not only from the last lines.
+- The Dashboard shows `[Thread:Escape|Open>Closed]` as Closed, and lists `[Timer:]` tags.
+- `[Timer:]`, `[E:]` and `[#N:Name]` reference tags are highlighted. An old `[E:Name 2/6]` is read
+  as a clock.
 - Updated for Lonelog v1.7 and the v1.1 Dice and Cards add-ons:
   - Inserting a Toolkit card draw writes `draw=Qs` instead of a bare `Qs`, since a card now
     always follows `=`. Cards and dice are highlighted on `tbl:` lines too (most draws are `tbl:`

@@ -25,10 +25,10 @@ describe("parseLonelogContext", () => {
     expect(parseLonelogContext("S4.1 *Cellar*").lastSceneId).toBe("S4.1");
   });
 
-  it("keeps the latest tag for each name", () => {
+  it("accumulates tags for each name (Lonelog v1.7 §4.1)", () => {
     const body = [
       "@ Talk to [N:Jonah|wary] at [L:Pier 9|foggy]",
-      "-> He scowls. [N:Jonah|hostile]",
+      "-> He scowls. [N:Jonah|wary>hostile]",
       "[Clock:Alarm 2/6]",
       "[Clock:Alarm 3/6]",
       "[Track:Escape 1/4]",

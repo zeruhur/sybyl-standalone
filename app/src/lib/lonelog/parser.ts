@@ -1,3 +1,5 @@
+import { applyTag, formatElement, scanTags, TagElement } from "./tags";
+
 export interface LonelogContext {
   lastSceneId: string;
   lastSceneDesc: string;
@@ -6,10 +8,25 @@ export interface LonelogContext {
   activeThreads: string[];
   activeClocks: string[];
   activeTracks: string[];
+  activeTimers: string[];
   pcState: string[];
   recentBeats: string[];
 }
 
+/** Elements that get their own line in the model's context, by tag type. */
+const CONTEXT_TYPES = {
+  N: "activeNPCs",
+  L: "activeLocations",
+  Thread: "activeThreads",
+  Clock: "activeClocks",
+  Track: "activeTracks",
+  Timer: "activeTimers",
+  PC: "pcState"
+} as const;
+
+/** Builds the Lonelog context sent with each request. Scene and beats come from the last
+ * `depthLines` lines. Tags accumulate (Lonelog v1.7 §4.1), so each element's state is replayed
+ * from the whole log, but only elements mentioned in those last lines are included. */
 export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogContext {
   const bodyWithoutFM = noteBody.replace(/^---[\s\S]*?---\r?\n/, "");
   const lines = bodyWithoutFM.split(/\r?\n/);
@@ -22,26 +39,15 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
     activeThreads: [],
     activeClocks: [],
     activeTracks: [],
+    activeTimers: [],
     pcState: [],
     recentBeats: []
   };
 
   const sceneRe = /^(?:#+\s+)?(T\d+-)?S(\d+[\w.]*)\s*\*([^*]*)\*/;
-  const npcRe = /\[N:([^\]]+)\]/g;
-  const locRe = /\[L:([^\]]+)\]/g;
-  const threadRe = /\[Thread:([^\]]+)\]/g;
-  const clockRe = /\[Clock:([^\]]+)\]/g;
-  const trackRe = /\[Track:([^\]]+)\]/g;
-  const pcRe = /\[PC:([^\]]+)\]/g;
   const beatRe = /^(@|\?|d:|tbl:|->|=>)/;
-  const skipRe = /^(#|---|>\s*\[|\[N:|\[L:|\[Thread:|\[Clock:|\[Track:|\[PC:)/;
-
-  const npcMap = new Map<string, string>();
-  const locMap = new Map<string, string>();
-  const threadMap = new Map<string, string>();
-  const clockMap = new Map<string, string>();
-  const trackMap = new Map<string, string>();
-  const pcMap = new Map<string, string>();
+  // Tag-only lines, plus the continuation and closing lines of a multi-line tag (§4.1.8).
+  const skipRe = /^(#|---|>\s*\[|\[#?[A-Z][A-Za-z]*:|\|)|^\]$/;
 
   for (const rawLine of window) {
     const line = rawLine.trim();
@@ -50,12 +56,6 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
       ctx.lastSceneId = `${sceneMatch[1] ?? ""}S${sceneMatch[2]}`;
       ctx.lastSceneDesc = sceneMatch[3].trim();
     }
-    for (const match of line.matchAll(npcRe)) npcMap.set(match[1].split("|")[0], match[1]);
-    for (const match of line.matchAll(locRe)) locMap.set(match[1].split("|")[0], match[1]);
-    for (const match of line.matchAll(threadRe)) threadMap.set(match[1].split("|")[0], match[1]);
-    for (const match of line.matchAll(clockRe)) clockMap.set(match[1].split(" ")[0], match[1]);
-    for (const match of line.matchAll(trackRe)) trackMap.set(match[1].split(" ")[0], match[1]);
-    for (const match of line.matchAll(pcRe)) pcMap.set(match[1].split("|")[0], match[1]);
     if (beatRe.test(line)) {
       ctx.recentBeats.push(line);
     } else if (line.length > 0 && !skipRe.test(line) && !sceneRe.test(line)) {
@@ -63,12 +63,22 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
     }
   }
 
-  ctx.activeNPCs = [...npcMap.values()];
-  ctx.activeLocations = [...locMap.values()];
-  ctx.activeThreads = [...threadMap.values()];
-  ctx.activeClocks = [...clockMap.values()];
-  ctx.activeTracks = [...trackMap.values()];
-  ctx.pcState = [...pcMap.values()];
+  let windowStart = 0;
+  for (let i = 0; i < lines.length - window.length; i++) {
+    windowStart = bodyWithoutFM.indexOf("\n", windowStart) + 1;
+  }
+  const state = new Map<string, TagElement>();
+  const mentioned = new Set<string>();
+  for (const occ of scanTags(bodyWithoutFM)) {
+    const key = applyTag(state, occ);
+    if (key && occ.index >= windowStart) mentioned.add(key);
+  }
+  for (const key of mentioned) {
+    const el = state.get(key);
+    if (!el || !(el.type in CONTEXT_TYPES)) continue;
+    ctx[CONTEXT_TYPES[el.type as keyof typeof CONTEXT_TYPES]].push(formatElement(el));
+  }
+
   ctx.recentBeats = ctx.recentBeats.slice(-10);
   return ctx;
 }
@@ -89,6 +99,9 @@ export function serializeContext(ctx: LonelogContext): string {
   }
   if (ctx.activeTracks.length) {
     lines.push(`Tracks: ${ctx.activeTracks.map((state) => `[Track:${state}]`).join(" ")}`);
+  }
+  if (ctx.activeTimers.length) {
+    lines.push(`Timers: ${ctx.activeTimers.map((state) => `[Timer:${state}]`).join(" ")}`);
   }
   if (ctx.recentBeats.length) {
     lines.push("Recent beats:");

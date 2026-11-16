@@ -1,3 +1,5 @@
+import { accumulateTags, threadState } from "./tags";
+
 export interface ThreadState {
   name: string;
   state: string;
@@ -9,48 +11,36 @@ export interface ProgressState {
   total: number;
 }
 
+export interface TimerState {
+  name: string;
+  current: number;
+}
+
 export interface CampaignDashboard {
   threads: ThreadState[];
   clocks: ProgressState[];
   tracks: ProgressState[];
-}
-
-const THREAD_RE = /\[Thread:([^\]]+)\]/g;
-const CLOCK_RE = /\[Clock:([^\]]+)\]/g;
-const TRACK_RE = /\[Track:([^\]]+)\]/g;
-
-function parseProgress(raw: string): ProgressState | null {
-  const match = raw.match(/^(.*?)\s+(\d+)\s*\/\s*(\d+)\s*$/);
-  if (!match) return null;
-  return { name: match[1].trim(), current: Number(match[2]), total: Number(match[3]) };
+  timers: TimerState[];
 }
 
 /** Scans the *entire* note body (unlike parser.ts's parseLonelogContext, which windows to the
- * last N lines for LLM prompt budget) for [Thread:]/[Clock:]/[Track:] tags, keeping the last
- * occurrence of each name as its current state — matches the notation's own "latest tag wins"
- * convention used when re-declaring a thread/clock/track's progress. */
+ * last N lines for LLM prompt budget) and replays its [Thread:]/[Clock:]/[Track:]/[Timer:] tags
+ * with Lonelog v1.7's accumulation rules (`[Clock:Alarm+1]`, `[Thread:Escape|Open>Closed]`; see
+ * tags.ts). A clock or track is shown once its size (`X/Y`) is known, a timer once it has a value. */
 export function extractDashboard(noteBody: string): CampaignDashboard {
   const bodyWithoutFM = noteBody.replace(/^---[\s\S]*?---\r?\n/, "");
-  const threadMap = new Map<string, string>();
-  const clockMap = new Map<string, ProgressState>();
-  const trackMap = new Map<string, ProgressState>();
+  const dashboard: CampaignDashboard = { threads: [], clocks: [], tracks: [], timers: [] };
 
-  for (const match of bodyWithoutFM.matchAll(THREAD_RE)) {
-    const [name, ...rest] = match[1].split("|");
-    threadMap.set(name.trim(), rest.join("|").trim() || "Open");
+  for (const el of accumulateTags(bodyWithoutFM).values()) {
+    const counter = el.counter;
+    if (el.type === "Thread") {
+      dashboard.threads.push({ name: el.name, state: threadState(el) });
+    } else if ((el.type === "Clock" || el.type === "Track") && counter?.current !== undefined && counter.total !== undefined) {
+      const progress = { name: el.name, current: counter.current, total: counter.total };
+      (el.type === "Clock" ? dashboard.clocks : dashboard.tracks).push(progress);
+    } else if (el.type === "Timer" && counter?.current !== undefined) {
+      dashboard.timers.push({ name: el.name, current: counter.current });
+    }
   }
-  for (const match of bodyWithoutFM.matchAll(CLOCK_RE)) {
-    const progress = parseProgress(match[1]);
-    if (progress) clockMap.set(progress.name, progress);
-  }
-  for (const match of bodyWithoutFM.matchAll(TRACK_RE)) {
-    const progress = parseProgress(match[1]);
-    if (progress) trackMap.set(progress.name, progress);
-  }
-
-  return {
-    threads: [...threadMap.entries()].map(([name, state]) => ({ name, state })),
-    clocks: [...clockMap.values()],
-    tracks: [...trackMap.values()]
-  };
+  return dashboard;
 }

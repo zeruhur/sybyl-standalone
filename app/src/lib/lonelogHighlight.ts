@@ -9,7 +9,8 @@ const sceneMatcher = new MatchDecorator({
 });
 
 const tagMatcher = new MatchDecorator({
-  regexp: /\[(N|L|PC|Thread|Clock|Track):[^\]]*\]/g,
+  // Core tag types (Lonelog v1.7 D.5.6), including `[#Type:Name]` references.
+  regexp: /\[#?(N|L|PC|Thread|Clock|Track|Timer|E):[^\]]*\]/g,
   decoration: (match) => Decoration.mark({ class: `cm-lonelog-tag cm-lonelog-tag-${match[1].toLowerCase()}` })
 });
 
