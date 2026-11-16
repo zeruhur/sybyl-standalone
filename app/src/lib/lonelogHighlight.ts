@@ -2,6 +2,7 @@ import { Decoration, DecorationSet, EditorView, MatchDecorator, ViewPlugin, View
 import { RangeSetBuilder } from "@codemirror/state";
 import { DICE_TOKEN_REGEX } from "./lonelog/diceNotation";
 import { CARD_TOKEN_REGEX } from "./lonelog/cardNotation";
+import { BEAT_SYMBOL_REGEX, LINE_START_BEAT, META_NOTE_REGEX } from "./lonelog/beats";
 
 const sceneMatcher = new MatchDecorator({
   regexp: /^#{0,6}\s*(?:T\d+-)?S\d+[\w.]*\s*\*[^*]*\*/gm,
@@ -14,9 +15,16 @@ const tagMatcher = new MatchDecorator({
   decoration: (match) => Decoration.mark({ class: `cm-lonelog-tag cm-lonelog-tag-${match[1].toLowerCase()}` })
 });
 
+// Line-start beats plus compact-form ones later on a beat line (Lonelog v1.7 D.1.3).
 const beatMatcher = new MatchDecorator({
-  regexp: /^(@|\?|->|=>|d:|tbl:)/gm,
-  decoration: (match) => Decoration.mark({ class: `cm-lonelog-beat cm-lonelog-beat-${beatClass(match[1])}` })
+  regexp: BEAT_SYMBOL_REGEX,
+  decoration: (match) => Decoration.mark({ class: `cm-lonelog-beat cm-lonelog-beat-${beatClass(match[1] ?? match[2])}` })
+});
+
+// `(label: text)` meta notes and bare `(text)` note lines (§4.5, D.7).
+const metaMatcher = new MatchDecorator({
+  regexp: META_NOTE_REGEX,
+  decoration: () => Decoration.mark({ class: "cm-lonelog-meta" })
 });
 
 function beatClass(symbol: string): string {
@@ -52,7 +60,7 @@ function buildPlugin(matcher: MatchDecorator) {
 // a long log: scene headers get a heading treatment, beat lines a colored left rule. The patterns
 // mirror sceneMatcher/beatMatcher without the global flag, since each is tested against one line.
 const SCENE_LINE = /^#{0,6}\s*(?:T\d+-)?S\d+[\w.]*\s*\*[^*]*\*/;
-const BEAT_LINE = /^(@|\?|->|=>|d:|tbl:)/;
+const BEAT_LINE = LINE_START_BEAT;
 
 function buildLineDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
@@ -139,5 +147,5 @@ const diceCardPlugin = ViewPlugin.fromClass(
 );
 
 export function lonelogHighlight() {
-  return [buildPlugin(sceneMatcher), buildPlugin(tagMatcher), buildPlugin(beatMatcher), diceCardPlugin, lineClassPlugin];
+  return [buildPlugin(sceneMatcher), buildPlugin(tagMatcher), buildPlugin(beatMatcher), buildPlugin(metaMatcher), diceCardPlugin, lineClassPlugin];
 }

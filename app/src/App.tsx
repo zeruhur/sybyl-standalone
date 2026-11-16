@@ -25,7 +25,7 @@ import SelectionBubble, { SelectionBubbleHandle } from "./components/SelectionBu
 import StatusToast from "./components/StatusToast";
 import { HeadingPickerHandle } from "./components/HeadingPicker";
 import { BookOpen, CaseSensitive, Command, Dices, Ellipsis, Info, LayoutDashboard, Menu, Moon, Search, Settings, Sun } from "lucide-react";
-import { ComposerIntent } from "./lib/composer";
+import { appendLogLine, buildLogLine, ComposerIntent, isLogMode } from "./lib/composer";
 import { checkExternalChange, createVaultFile, deleteVaultFile, exportNoteTo, ExternalChangeError, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, openVaultFile, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
 import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
@@ -1247,7 +1247,10 @@ Keep it concise — 4 bullet points, one short sentence each.`;
         // Scene titles are always Heading 3, and the trailing *...* is required by the scene
         // parser/highlighter's regex even with no description to show.
         const header = `### S${counter} *${sceneDesc}*`;
-        const block = `${header}\n\n@ \nd: \n=> \n\n? \n-> \n=> \n`;
+        // Lonelog v1.7 §8.4: a d: line carries its outcome after `->` on the same line; tbl: is the
+        // v1.7 beat for content from a table. Fenced like the spec's template when that's on.
+        const beats = `@ \nd:  -> \n=> \n\n? \n-> \n=> \n\ntbl:  -> `;
+        const block = `${header}\n\n${lonelogOpts().wrapInCodeBlock ? `\`\`\`\n${beats}\n\`\`\`` : beats}\n`;
         insertFormatted(block, "cursor");
         if (settings.lonelogAutoIncScene) {
           await updateActiveFrontmatter({ scene_counter: counter + 1 });
@@ -1624,6 +1627,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
    * Interpret works on the editor selection, and so inserts below it like the palette command. */
   async function handleComposerSubmit(intent: ComposerIntent): Promise<boolean> {
     if (!activeFileRef.current || loading) return false;
+    if (isLogMode(intent.mode)) return logComposerLine(intent);
     switch (intent.mode) {
       case "oracle":
         return playAskOracle(intent.text, intent.detail, "end-of-note");
@@ -1637,7 +1641,25 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         const selected = view ? getSelection(view) : "";
         return selected ? playInterpretOracle(selected) : false;
       }
+      default:
+        return false;
     }
+  }
+
+  /** Composer `d:`/`tbl:`/`=>` lines: logged at the end of the note as written (a `d:`/`tbl:`
+   * dice expression without a result is rolled first), with no AI call. */
+  function logComposerLine(intent: ComposerIntent): boolean {
+    const file = activeFileRef.current;
+    const view = editorViewRef.current;
+    if (!file || !view) return false;
+    const line = buildLogLine(intent);
+    const change = appendLogLine(currentDoc(), line, lonelogOpts().wrapInCodeBlock);
+    // Cursor after the new line, scrolled into view; focus stays in the composer for the next line.
+    view.dispatch({ changes: change, selection: { anchor: change.from + change.insert.length }, scrollIntoView: true });
+    const nextBody = docWithoutLiveOutput(view.state);
+    setBody(nextBody);
+    persistBody(file, nextBody);
+    return true;
   }
 
   function editorHasSelection(): boolean {

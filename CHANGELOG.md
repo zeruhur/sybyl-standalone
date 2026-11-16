@@ -6,7 +6,21 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 
 ## Unreleased
 
+### Added
+- The composer logs your own beats without calling the AI: start a line with `d:`, `tbl:` or `=>`.
+  A `d:` or `tbl:` line with a dice expression but no result is rolled for you
+  (`d: Strike 2d6+2 vs 8` becomes `d: Strike 2d6+2=9 vs 8`). Logged lines join the code block
+  the log ends in instead of opening a new one each time.
+- Compact Lonelog lines, where several beats share one line
+  (`@ Sneak d: 2d6=8 -> Fail => Seen`), have every symbol highlighted, and the AI reads them as
+  separate beats.
+- Meta notes such as `(note: …)`, `(todo: …)` and `(retcon: …)` are shown dimmed. Asides are no
+  longer sent to the AI as part of the story; `(retcon: …)` and `(interp: …)` still are.
+
 ### Changed
+- Insert Scene Template follows Lonelog v1.7: the `d:` line has a slot for its outcome
+  (`d:  -> `), there's a `tbl:` line, and the beats sit in a code block when code-block wrapping
+  is on.
 - Tags now follow Lonelog v1.7's update rules, so a later tag changes the earlier state instead
   of replacing it. `[PC:Alex|HP-2]` lowers HP and keeps the PC's other stats. `[N:Jonah|-injured]`,
   `[N:Jonah|friendly>hostile]`, `status:captured`, `×4` and `[Clock:Alarm+1]` all work, and so do

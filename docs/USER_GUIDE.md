@@ -65,8 +65,11 @@ You don't have to write Lonelog by hand — most commands insert correctly-tagge
 
 The main pane is a CodeMirror editor with full GFM support (tables, task lists, strikethrough,
 autolinks) plus Lonelog-aware syntax highlighting for scene headers, tags, and dice/card notation
-on `d:` lines. Scene headers get a heading treatment and each beat line (`@`, `?`, `d:`, `->`,
-`=>`) a colored rule down its left edge, so a long log is easy to scan. Changes autosave about half
+on `d:` and `tbl:` lines. Scene headers get a heading treatment and each beat line (`@`, `?`, `d:`,
+`tbl:`, `->`, `=>`) a colored rule down its left edge, so a long log is easy to scan. On compact
+lines (`@ Sneak d: 2d6=8 -> Fail => Seen`) every symbol is highlighted, and meta notes such as
+`(note: …)` are dimmed. Meta notes aren't sent to the AI, except `(retcon: …)` and `(interp: …)`,
+which correct or explain the story. Changes autosave about half
 a second after you stop typing.
 
 **Formatting.** Select some text and a small bubble appears above it with Bold, Italic,
@@ -97,6 +100,9 @@ following Lonelog's own beat symbols, and Enter sends it:
 | `@ Pick the lock` | Declare Action — Sybyl narrates the consequences |
 | `@ Pick the lock d: 2d6=8` | Declare Action with a roll result |
 | `-> Yes, and` | Interpret an oracle result |
+| `d: Strike 2d6+2 vs 8` | Log a roll, no AI. A dice expression without a result is rolled for you: `d: Strike 2d6+2=9 vs 8` |
+| `tbl: Loot d100 -> A sword` | Log a table result, no AI (rolled the same way if it has no result) |
+| `=> The door gives way` | Log a consequence, no AI |
 
 The chips above the input (**? Oracle**, **@ Action**, **S Scene**, **-> Interpret**) do the same
 without typing a symbol: pick one, then type plain text. **Scene** can be sent blank to let Sybyl
@@ -104,7 +110,8 @@ choose the setting, and **Interpret** can be sent blank to interpret whatever te
 in the editor. **Expand**, **What now?** and **What can I do?** run immediately, and **More…** opens
 the full command palette.
 
-Everything sent from the composer is appended to the **end** of the log, where play continues. The
+Everything sent from the composer is appended to the **end** of the log, where play continues.
+Logged `d:`/`tbl:`/`=>` lines join the code block the log ends in, if there is one. The
 command palette (Ctrl+K) still inserts at the cursor, for when you want output somewhere else.
 Ctrl+J jumps to the composer from anywhere. The input is only cleared once the result has landed,
 so a failed or cancelled request doesn't lose what you typed.

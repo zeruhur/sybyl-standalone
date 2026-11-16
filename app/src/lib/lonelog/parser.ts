@@ -1,4 +1,5 @@
 import { applyTag, formatElement, scanTags, TagElement } from "./tags";
+import { isAsideMetaNote, LINE_START_BEAT, splitCompactBeats } from "./beats";
 
 export interface LonelogContext {
   lastSceneId: string;
@@ -45,7 +46,7 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
   };
 
   const sceneRe = /^(?:#+\s+)?(T\d+-)?S(\d+[\w.]*)\s*\*([^*]*)\*/;
-  const beatRe = /^(@|\?|d:|tbl:|->|=>)/;
+  const beatRe = LINE_START_BEAT;
   // Tag-only lines, plus the continuation and closing lines of a multi-line tag (§4.1.8).
   const skipRe = /^(#|---|>\s*\[|\[#?[A-Z][A-Za-z]*:|\|)|^\]$/;
 
@@ -57,8 +58,8 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
       ctx.lastSceneDesc = sceneMatch[3].trim();
     }
     if (beatRe.test(line)) {
-      ctx.recentBeats.push(line);
-    } else if (line.length > 0 && !skipRe.test(line) && !sceneRe.test(line)) {
+      ctx.recentBeats.push(...splitCompactBeats(line));
+    } else if (line.length > 0 && !skipRe.test(line) && !sceneRe.test(line) && !isAsideMetaNote(line)) {
       ctx.recentBeats.push(line);
     }
   }

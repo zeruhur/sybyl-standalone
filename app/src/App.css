@@ -864,6 +864,10 @@ html, body, #root {
   border-radius: 3px;
   padding: 0 2px;
 }
+.cm-lonelog-meta {
+  color: var(--text-dim);
+  font-style: italic;
+}
 .cm-lonelog-card {
   color: #f5d76e;
   font-weight: 600;
