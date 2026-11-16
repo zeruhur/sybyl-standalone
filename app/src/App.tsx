@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
@@ -29,11 +29,12 @@ import { appendLogLine, buildLogLine, ComposerIntent, isLogMode } from "./lib/co
 import { checkExternalChange, createVaultFile, deleteVaultFile, exportNoteTo, ExternalChangeError, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, openVaultFile, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
 import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
-import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
+import { createDeckSession, DeckSession, DeckType, drawCard, formatDrawLines, formatReshuffleTag, reshuffleDeck } from "./lib/toolkit/cardEngine";
 import { generateWord, WORD_CATEGORIES } from "./lib/toolkit/wordGenerators";
 import { addLogEntry, ToolkitLogEntry } from "./lib/toolkit/history";
 import { deleteDeckState, loadDeckState, saveDeckState } from "./lib/toolkit/deckState";
 import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
+import { parseInlineTables, rollInlineTable, tableDisplayName } from "./lib/lonelog/inlineTables";
 import { askOracle, formatOracleResult, normalizeChaosFactor, ORACLE_LIKELIHOODS } from "./lib/toolkit/oracleEngine";
 import {
   createCustomDeckSession,
@@ -193,6 +194,8 @@ export default function App() {
   const [files, setFiles] = useState<VaultFile[]>([]);
   const [activeFile, setActiveFile] = useState<VaultFile | null>(null);
   const [body, setBody] = useState("");
+  // Tables defined in the open note's own text (Lonelog v1.7 §4.3.1-4.3.2), for the Toolkit.
+  const noteTables = useMemo(() => parseInlineTables(body), [body]);
   const [settings, setSettings] = useState<SybylSettings>(DEFAULT_SETTINGS);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
@@ -1498,7 +1501,9 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
       flashStatus(`Sybyl: couldn't parse dice expression "${expr}".`);
       return undefined;
     }
-    return logToolkit("Dice", formatRollResult(result));
+    // A bare roll is a d: line whose total is the result (Lonelog v1.7 §3.2.1); the player adds
+    // `-> outcome` when it decides something.
+    return logToolkit("Dice", `d: ${formatRollResult(result)}`);
   }
 
   /** Sets the Toolkit card deck, saving it with the open note so the shuffle survives a restart.
@@ -1517,13 +1522,18 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     const session = deckSession ?? createDeckSession("standard");
     const { session: nextSession, card } = drawCard(session);
     updateDeck(nextSession);
-    // Cards add-on v1.1: a card identity always follows `=` (`tbl: draw=Qs -> …`).
-    return logToolkit("Cards", `draw=${card}`, session.type === "tarot" ? "Tarot" : undefined);
+    if (!card) return undefined;
+    // Cards add-on v1.1: `tbl: draw=Qs`, then the deck's state as a [Deck:] tag.
+    const reshuffled = session.drawPile.length === 0;
+    return logToolkit("Cards", formatDrawLines(card, nextSession, reshuffled), session.type === "tarot" ? "Tarot" : undefined);
   }
 
-  function toolkitReshuffleDeck() {
-    if (!deckSession) return;
-    updateDeck(reshuffleDeck(deckSession));
+  /** Returns the reset deck tag, so a reshuffle can be recorded in the log too. */
+  function toolkitReshuffleDeck(): string | undefined {
+    const session = deckSession ?? createDeckSession("standard");
+    const next = reshuffleDeck(session);
+    updateDeck(next);
+    return formatReshuffleTag(next);
   }
 
   function toolkitSetDeckType(type: DeckType) {
@@ -1532,14 +1542,29 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
 
   function toolkitGenerateWord(categoryId: string): string | undefined {
     const category = WORD_CATEGORIES.find((c) => c.id === categoryId)?.label;
-    return logToolkit("Words", generateWord(categoryId), category);
+    const word = generateWord(categoryId);
+    // Generated content is a tbl: result (v1.7 §4.3): `tbl: Noun -> lantern`.
+    return logToolkit("Words", word && `tbl: ${category ?? "Word"} -> ${word}`, category);
+  }
+
+  function toolkitRollNoteTable(name: string): string | undefined {
+    const table = noteTables.find((t) => t.name === name);
+    if (!table) return undefined;
+    const rolled = rollInlineTable(table);
+    if (!rolled.line) {
+      flashStatus(`Sybyl: ${table.name} rolled ${rolled.value}, which no entry covers.`);
+      return undefined;
+    }
+    return logToolkit("Tables", rolled.line, table.name);
   }
 
   async function toolkitRollTable(path: string): Promise<string | undefined> {
     try {
       const content = await readTableFile(path);
       const table = tableFiles.find((t) => t.path === path)?.name;
-      return logToolkit("Tables", rollTable(parseTableEntries(content)), table);
+      const result = rollTable(parseTableEntries(content));
+      // A weighted roll has no die to show, so the roll is left out: `tbl: Loot -> A broken sword`.
+      return logToolkit("Tables", result && `tbl: ${tableDisplayName(table ?? "Table")} -> ${result}`, table);
     } catch (error) {
       flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
@@ -1909,6 +1934,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
                     onSetDeckType={toolkitSetDeckType}
                     onGenerateWord={toolkitGenerateWord}
                     onRollTable={toolkitRollTable}
+                    noteTables={activeFile ? noteTables.map((t) => t.name) : []}
+                    onRollNoteTable={toolkitRollNoteTable}
                     onRefreshTables={() => vaultPath && refreshTableFiles(vaultPath)}
                     onInsert={toolkitInsert}
                     chaosFactor={chaosFactor}

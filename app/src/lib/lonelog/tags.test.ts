@@ -110,3 +110,15 @@ describe("accumulated tags in the app", () => {
     expect(dash.timers).toEqual([{ name: "Dawn", current: 2 }]);
   });
 });
+
+describe("add-on tags", () => {
+  it("reach the AI as other tags, events included", () => {
+    const ctx = parseLonelogContext("[Deck:Main|×52]\n[Deck:Main|×51|out:+Qs]\n=> The bridge falls. [E:Bridge Collapse]");
+    expect(ctx.otherTags).toEqual(["[Deck:Main|×51|out:Qs]", "[E:Bridge Collapse]"]);
+  });
+
+  it("show on the dashboard, but events and characters don't", () => {
+    const dash = extractDashboard("[Inv:Kael|Torch|×3]\n[E:Bridge Collapse]\n[N:Jonah|wary]");
+    expect(dash.other).toEqual([{ type: "Inv", name: "Kael", text: "[Inv:Kael|Torch|×3]" }]);
+  });
+});

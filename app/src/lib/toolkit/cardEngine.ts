@@ -73,3 +73,24 @@ export function drawCard(session: DeckSession): { session: DeckSession; card: st
     card: withOrientation(card, working.type)
   };
 }
+
+/** The `[Deck:]` tag name for a deck type (cards add-on v1.1, "Deck State and Hands"). */
+export function deckTagName(type: DeckType): string {
+  return type === "tarot" ? "Tarot" : "Standard";
+}
+
+/** A drawn card as the cards add-on writes it, plus the deck's new state on the next line:
+ * `tbl: draw=Qs` / `[Deck:Standard|×51|out:+Qs]`. The count is written as a value (`×51`), not a
+ * change (`×-1`), so the line is right even in a log that never set the deck's size. A draw that
+ * reshuffled the discards back in starts the out-of-play list over (`out:Qs`). The out list holds
+ * the card's identity: a reversed Tarot card is still the same card. */
+export function formatDrawLines(card: string, after: DeckSession, reshuffled: boolean): string {
+  const identity = after.type === "tarot" ? card.replace(/r$/, "") : card;
+  const out = reshuffled ? `out:${identity}` : `out:+${identity}`;
+  return `tbl: draw=${card}\n[Deck:${deckTagName(after.type)}|×${after.drawPile.length}|${out}]`;
+}
+
+/** The deck tag for a full reshuffle: every card back in, nothing out of play. */
+export function formatReshuffleTag(after: DeckSession): string {
+  return `[Deck:${deckTagName(after.type)}|×${after.drawPile.length}|out:none]`;
+}

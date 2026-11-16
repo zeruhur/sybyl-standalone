@@ -7,6 +7,14 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 ## Unreleased
 
 ### Added
+- The Toolkit's Tables tab rolls on tables written in the note itself: `tbl: Name (d6)` with
+  numbered entries (ranges like `1-2:` and `d66` work), or a list such as
+  `tbl: Mood [Tense, Hopeful, Uncanny]`. The result is a Lonelog line,
+  `tbl: Forest Encounter d6=5 -> Traveler on the road`.
+- Card draws record the deck's state as the Cards add-on's `[Deck:]` tag
+  (`[Deck:Standard|×51|out:+Qs]`), and Reshuffle gives an insertable `[Deck:Standard|×52|out:none]`.
+- Tags from add-ons (`[Deck:]`, `[Inv:]`, `[Wealth:]`…) and events (`[E:]`) are now passed to the
+  AI with the rest of the scene, and add-on tags get an "Other tags" section on the Dashboard.
 - The composer logs your own beats without calling the AI: start a line with `d:`, `tbl:` or `=>`.
   A `d:` or `tbl:` line with a dice expression but no result is rolled for you
   (`d: Strike 2d6+2 vs 8` becomes `d: Strike 2d6+2=9 vs 8`). Logged lines join the code block
@@ -18,6 +26,13 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
   longer sent to the AI as part of the story; `(retcon: …)` and `(interp: …)` still are.
 
 ### Changed
+- Toolkit results insert as full Lonelog v1.7 lines instead of bare values:
+  - Dice: `d: 2d6+3=12`.
+  - Tables: `tbl: Loot -> A broken sword`.
+  - Words: `tbl: Noun -> lantern`.
+  - Cards: `tbl: draw=Qs`.
+  - Oracle: the full answer form, `d: Oracle (50/50, CF 4) d100=40 vs 45 -> Yes, but...`. A random
+    event follows as a `tbl: Random Event` block with Focus and Subject lines.
 - Insert Scene Template follows Lonelog v1.7: the `d:` line has a slot for its outcome
   (`d:  -> `), there's a `tbl:` line, and the beats sit in a code block when code-block wrapping
   is on.

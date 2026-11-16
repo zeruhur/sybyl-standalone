@@ -135,16 +135,18 @@ button runs the Edit Campaign Info command.
 ## Dashboard: threads, clocks, tracks
 
 Click **Dashboard** in the command bar (needs an open note) to open the side panel's Dashboard
-tab, showing every `[Thread:]`, `[Clock:]`,
-and `[Track:]` tag in the current note, aggregated live as you type:
+tab, showing every `[Thread:]`, `[Clock:]`, `[Track:]` and `[Timer:]` tag in the current note,
+aggregated live as you type:
 
 - **Threads** — open ones are listed directly; closed ones collapse behind a "N closed" toggle.
 - **Clocks** and **Tracks** — each renders as a labeled progress bar (`current/total`).
+- **Timers** — each with its current count.
+- **Other tags** — tags from add-ons, such as `[Deck:]` or `[Inv:]`, with their current state.
 
-Only the *last* occurrence of a given name counts as its current state — re-declaring
-`[Clock:Ritual 8/12]` later in the log overrides an earlier `[Clock:Ritual 5/12]`, exactly like
-Lonelog's own convention. The dashboard reads the whole note, not just recent lines, so nothing
-scrolls out of view.
+Tags follow Lonelog v1.7's update rules: a later tag changes the state instead of replacing it.
+`[Clock:Ritual+1]` advances a clock, `[Clock:Ritual 8/12]` sets it, and
+`[Thread:Escape|Open>Closed]` closes a thread. The dashboard reads the whole note, not just recent
+lines, so nothing scrolls out of view.
 
 ## Version history
 
@@ -267,14 +269,26 @@ set of offline, deterministic tools — none of them call an AI provider:
 - **Cut-up** — the Burroughs cut-up technique: shuffles a block of text word-by-word or
   line-by-line. Text can be typed directly or loaded from an existing table file.
 - **Tables** — rolls on custom random tables you author yourself as plain `.md`/`.txt` files in
-  `<vault>/tables/`, one entry per line (optionally weighted with a trailing `^N`).
+  `<vault>/tables/`, one entry per line (optionally weighted with a trailing `^N`). It also lists
+  the tables defined in the open note, Lonelog style: `tbl: Forest Encounter (d6)` followed by
+  indented numbered entries (`  1-2: Nothing`, `  3: Tracks`…, and `d66` works), or a list such as
+  `tbl: Mood [Tense, Hopeful, Uncanny]`. A table with a die is rolled with it; one without is
+  picked from at random.
 - **History** — every roll, draw and result from this session, newest first, with the tool and
   the time, so nothing is lost just because you didn't insert it right away. Keeps the last 200;
   **Clear** empties it, and it starts fresh each time you open the app. Custom Deck draws are
   listed by file name, without an Insert button.
 
 Every result has its own **Insert** button, which inserts at the editor cursor and is disabled
-(not hidden) when no note is open.
+(not hidden) when no note is open. Results are written as Lonelog lines, ready for the log:
+
+| Tool | Inserts |
+|---|---|
+| Dice | `d: 2d6+3=12` (add `-> outcome` if the roll decides something) |
+| Oracle | `d: Oracle (50/50, CF 4) d100=40 vs 45 -> Yes, but...`, plus a `tbl: Random Event` block when one triggers |
+| Cards | `tbl: draw=Qs` and the deck's state, `[Deck:Standard|×51|out:+Qs]`; Reshuffle gives `[Deck:Standard|×52|out:none]` |
+| Words | `tbl: Noun -> lantern` |
+| Tables | `tbl: Forest Encounter d6=5 -> Traveler on the road`, or `tbl: Loot -> A broken sword` for a weighted file table |
 
 ## Sources and rules grounding
 

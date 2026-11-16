@@ -505,6 +505,8 @@ html, body, #root {
 }
 .toolkit-result span {
   overflow-wrap: anywhere;
+  /* Results can be several Lonelog lines (a draw plus its [Deck:] tag, an oracle random event). */
+  white-space: pre-wrap;
 }
 
 .toolkit-history-header {
@@ -560,6 +562,12 @@ html, body, #root {
   color: var(--text-dim);
 }
 
+.dashboard-other-row {
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
 .dashboard-thread-row {
   display: flex;
   justify-content: space-between;

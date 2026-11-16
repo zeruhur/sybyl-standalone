@@ -73,6 +73,16 @@ export default function DashboardPanel({ body }: DashboardPanelProps) {
           ))}
         </div>
       )}
+      {dashboard.other.length > 0 && (
+        <div className="dashboard-section">
+          <h4>Other tags</h4>
+          {dashboard.other.map((o) => (
+            <div className="dashboard-other-row" key={`${o.type}:${o.name}`}>
+              <code>{o.text}</code>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

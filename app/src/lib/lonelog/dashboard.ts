@@ -1,4 +1,4 @@
-import { accumulateTags, threadState } from "./tags";
+import { accumulateTags, formatElement, threadState } from "./tags";
 
 export interface ThreadState {
   name: string;
@@ -16,11 +16,25 @@ export interface TimerState {
   current: number;
 }
 
+/** A tag of a type the core doesn't define, such as the cards add-on's `[Deck:]` or an
+ * inventory add-on's `[Inv:]`, shown with its current state. */
+export interface OtherTagState {
+  type: string;
+  name: string;
+  /** The state in tag form: `[Deck:Main|×50|out:Qs,M16]`. */
+  text: string;
+}
+
+/** Core types (Lonelog v1.7 D.5.6) that aren't dashboard material themselves: characters,
+ * places and one-off events. */
+const NOT_ON_DASHBOARD = new Set(["PC", "N", "L", "E", "Thread", "Clock", "Track", "Timer"]);
+
 export interface CampaignDashboard {
   threads: ThreadState[];
   clocks: ProgressState[];
   tracks: ProgressState[];
   timers: TimerState[];
+  other: OtherTagState[];
 }
 
 /** Scans the *entire* note body (unlike parser.ts's parseLonelogContext, which windows to the
@@ -29,7 +43,7 @@ export interface CampaignDashboard {
  * tags.ts). A clock or track is shown once its size (`X/Y`) is known, a timer once it has a value. */
 export function extractDashboard(noteBody: string): CampaignDashboard {
   const bodyWithoutFM = noteBody.replace(/^---[\s\S]*?---\r?\n/, "");
-  const dashboard: CampaignDashboard = { threads: [], clocks: [], tracks: [], timers: [] };
+  const dashboard: CampaignDashboard = { threads: [], clocks: [], tracks: [], timers: [], other: [] };
 
   for (const el of accumulateTags(bodyWithoutFM).values()) {
     const counter = el.counter;
@@ -40,6 +54,8 @@ export function extractDashboard(noteBody: string): CampaignDashboard {
       (el.type === "Clock" ? dashboard.clocks : dashboard.tracks).push(progress);
     } else if (el.type === "Timer" && counter?.current !== undefined) {
       dashboard.timers.push({ name: el.name, current: counter.current });
+    } else if (!NOT_ON_DASHBOARD.has(el.type)) {
+      dashboard.other.push({ type: el.type, name: el.name, text: `[${el.type}:${formatElement(el)}]` });
     }
   }
   return dashboard;

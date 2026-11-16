@@ -166,6 +166,8 @@ function applyValue(el: TagElement, raw: string) {
     if (single && single[1] === "+") next = items.some((i) => sameText(i, single[2])) ? items : [...items, single[2].trim()];
     else if (single) next = items.filter((i) => !sameText(i, single[2]));
     else if (change) next = [...items.filter((i) => !sameText(i, change[1])), change[2].trim()];
+    // `category:none` empties it (the cards add-on resets a deck with `out:none`).
+    else if (/^none$/i.test(rest)) next = [];
     else next = rest.split(",").map((i) => i.trim()).filter(Boolean);
     entries.set(key, { kind: "category", name: category[1], items: next });
     return;
@@ -266,7 +268,7 @@ function formatEntry(entry: TagEntry): string {
     case "count":
       return entry.value !== undefined ? `×${entry.value}` : `×${formatSigned(entry.delta)}`;
     case "category":
-      return `${entry.name}:${entry.items.join(",")}`;
+      return `${entry.name}:${entry.items.length ? entry.items.join(",") : "none"}`;
   }
 }
 

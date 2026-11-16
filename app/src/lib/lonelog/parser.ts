@@ -10,6 +10,8 @@ export interface LonelogContext {
   activeClocks: string[];
   activeTracks: string[];
   activeTimers: string[];
+  /** Every other tag mentioned, add-on types and events included: `[Deck:Main|×50|out:Qs]`. */
+  otherTags: string[];
   pcState: string[];
   recentBeats: string[];
 }
@@ -41,6 +43,7 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
     activeClocks: [],
     activeTracks: [],
     activeTimers: [],
+    otherTags: [],
     pcState: [],
     recentBeats: []
   };
@@ -76,8 +79,9 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
   }
   for (const key of mentioned) {
     const el = state.get(key);
-    if (!el || !(el.type in CONTEXT_TYPES)) continue;
-    ctx[CONTEXT_TYPES[el.type as keyof typeof CONTEXT_TYPES]].push(formatElement(el));
+    if (!el) continue;
+    if (el.type in CONTEXT_TYPES) ctx[CONTEXT_TYPES[el.type as keyof typeof CONTEXT_TYPES]].push(formatElement(el));
+    else ctx.otherTags.push(`[${el.type}:${formatElement(el)}]`);
   }
 
   ctx.recentBeats = ctx.recentBeats.slice(-10);
@@ -104,6 +108,7 @@ export function serializeContext(ctx: LonelogContext): string {
   if (ctx.activeTimers.length) {
     lines.push(`Timers: ${ctx.activeTimers.map((state) => `[Timer:${state}]`).join(" ")}`);
   }
+  if (ctx.otherTags.length) lines.push(`Other tags: ${ctx.otherTags.join(" ")}`);
   if (ctx.recentBeats.length) {
     lines.push("Recent beats:");
     ctx.recentBeats.forEach((beat) => lines.push(`  ${beat}`));
