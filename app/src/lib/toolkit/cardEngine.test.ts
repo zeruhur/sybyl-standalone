@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildStandardDeck, buildTarotDeck, createDeckSession, drawCard } from "./cardEngine";
+import { buildStandardDeck, buildTarotDeck, createDeckSession, drawCard, formatDrawLines, formatReshuffleTag } from "./cardEngine";
+import { accumulateTags, formatElement } from "../lonelog/tags";
 import { isCardToken } from "../lonelog/cardNotation";
 import { cutUpText } from "./cutup";
 
@@ -60,5 +61,27 @@ describe("cutUpText", () => {
   it("returns undefined for blank input", () => {
     expect(cutUpText("   \n ", "words")).toBeUndefined();
     expect(cutUpText("", "lines")).toBeUndefined();
+  });
+});
+
+describe("formatDrawLines (cards add-on v1.1)", () => {
+  it("writes the draw and the deck's new state", () => {
+    const after = { type: "standard" as const, drawPile: Array(51).fill("x"), discardPile: ["Qs"] };
+    expect(formatDrawLines("Qs", after, false)).toBe("tbl: draw=Qs\n[Deck:Standard|×51|out:+Qs]");
+    expect(formatDrawLines("Qs", after, true)).toBe("tbl: draw=Qs\n[Deck:Standard|×51|out:Qs]");
+  });
+
+  it("keeps a reversed Tarot card's identity in the out list, but not a joker's r", () => {
+    const tarot = { type: "tarot" as const, drawPile: [], discardPile: [] };
+    expect(formatDrawLines("M16r", tarot, false)).toBe("tbl: draw=M16r\n[Deck:Tarot|×0|out:+M16]");
+    const jokers = { type: "standard-jokers" as const, drawPile: [], discardPile: [] };
+    expect(formatDrawLines("RJkr", jokers, false)).toContain("out:+RJkr]");
+  });
+
+  it("resets the deck on a reshuffle, and the tags replay to that state", () => {
+    const full = createDeckSession("standard");
+    expect(formatReshuffleTag(full)).toBe("[Deck:Standard|×52|out:none]");
+    const log = "[Deck:Standard|×51|out:+Qs]\n[Deck:Standard|×50|out:+7h]\n[Deck:Standard|×52|out:none]";
+    expect(formatElement(accumulateTags(log).get("Deck:standard")!)).toBe("Standard|×52|out:none");
   });
 });

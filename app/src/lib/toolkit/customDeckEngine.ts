@@ -34,11 +34,14 @@ export async function listDeckFolders(vaultPath: string): Promise<DeckFolder[]> 
 }
 
 /** Returns `undefined` if the folder contains no recognized image files. */
-export async function createCustomDeckSession(folder: DeckFolder): Promise<CustomDeckSession | undefined> {
+/** The image files in a deck folder, as full paths. */
+export async function listDeckImages(folder: DeckFolder): Promise<string[]> {
   const entries = await readDir(folder.path);
-  const images = entries
-    .filter((e) => !e.isDirectory && IMAGE_EXTENSIONS.test(e.name ?? ""))
-    .map((e) => joinPath(folder.path, e.name!));
+  return entries.filter((e) => !e.isDirectory && IMAGE_EXTENSIONS.test(e.name ?? "")).map((e) => joinPath(folder.path, e.name!));
+}
+
+export async function createCustomDeckSession(folder: DeckFolder): Promise<CustomDeckSession | undefined> {
+  const images = await listDeckImages(folder);
   if (images.length === 0) return undefined;
   return { name: folder.name, drawPile: shuffle(images), discardPile: [] };
 }

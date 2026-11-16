@@ -1,6 +1,8 @@
 import { GenerationResponse } from "./types";
 
-const n = (value: number) => value.toLocaleString("en-US");
+// Thousands separators by hand rather than toLocaleString, so the output never depends on the
+// runtime's locale data (the one place the test suite had an unexplained, unreproduced failure).
+const n = (value: number) => String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 /** A one-line token summary for a finished generation, e.g. "5,212 in (4,000 cached) · 180 out".
  * "in" is the whole prompt; the cached share (read from or newly written to the provider's prompt

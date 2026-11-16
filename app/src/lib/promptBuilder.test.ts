@@ -30,3 +30,9 @@ describe("buildRequest", () => {
     expect(request.systemPrompt).not.toContain("HP 3");
   });
 });
+
+it("tells the model how to read Lonelog v1.7 logs", () => {
+  const prompt = buildSystemPrompt({});
+  expect(prompt).toContain('"->" marks an outcome and nothing else');
+  expect(prompt).toContain('"(retcon: ...)" corrects an earlier line');
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatRollResult, parseDiceExpression, rollExpression } from "./diceEngine";
+import { formatRollResult, needsSpaceBeforeResult, parseDiceExpression, rollExpression } from "./diceEngine";
 import { isDiceExpression } from "../lonelog/diceNotation";
 import { queueDice } from "../../test/random";
 
@@ -66,7 +66,7 @@ describe("rollExpression", () => {
     expect(result.isPool).toBe(true);
     expect(result.successes).toBe(2);
     expect(result.failures).toBe(1);
-    expect(formatRollResult(result)).toBe("5d10>=7f=1=2");
+    expect(formatRollResult(result)).toBe("5d10>=7f=1 =2");
   });
 
   it("keeps Fudge dice within -1..1", () => {
@@ -167,4 +167,122 @@ describe("engine and highlighter agree", () => {
     expect(parseDiceExpression(expr)).toBeDefined();
     expect(isDiceExpression(expr)).toBe(true);
   });
+});
+
+describe("needsSpaceBeforeResult (dice add-on v1.1)", () => {
+  it.each(["2d6!", "2d6!!", "5d10>=7", "10d6=6", "d6r", "d6ro", "2d6r<3", "4d6>4f<3"])("%s takes a space", (expr) =>
+    expect(needsSpaceBeforeResult(expr)).toBe(true)
+  );
+  it.each(["2d6+3", "4d6dl1", "2d20kh1", "d%", "4dF+2", "d6min3"])("%s does not", (expr) =>
+    expect(needsSpaceBeforeResult(expr)).toBe(false)
+  );
+});
+
+describe("dice add-on Appendix grammar", () => {
+  it("penetrates: each re-roll counts 1 less, exploding on the die as rolled (spec: 2d6!p)", () => {
+    queueDice(6, [6, 1, 6, 6, 4]); // both dice first (6 and 1), then the first die's re-rolls
+    const result = rollExpression("2d6!p")!;
+    expect(result.rolls).toEqual([6, 5, 5, 3, 1]);
+    expect(result.total).toBe(20);
+  });
+
+  it("compounds and penetrates together", () => {
+    queueDice(6, [6, 3]);
+    expect(rollExpression("1d6!!p")!.rolls).toEqual([8]);
+  });
+
+  it("re-rolls duplicates with u, once with uo, only matching ones with a compare point", () => {
+    queueDice(10, [4, 4, 4, 7]);
+    expect(rollExpression("2d10u")!.rolls).toEqual([4, 7]);
+    queueDice(10, [4, 4, 4]);
+    expect(rollExpression("2d10uo")!.rolls).toEqual([4, 4]);
+    queueDice(6, [3, 3, 5, 5, 2]);
+    expect(rollExpression("4d6u=5")!.rolls).toEqual([3, 3, 5, 2]);
+  });
+
+  it("drops both ends with dh and dl together (spec: 4d10dh1dl2)", () => {
+    queueDice(10, [2, 9, 5, 1]);
+    const result = rollExpression("4d10dh1dl2")!;
+    expect(result.kept).toEqual([5]);
+    expect(result.total).toBe(5);
+  });
+
+  it("lets keep and drop each look at the whole pool (spec: 3d10k1dh1 drops everything)", () => {
+    queueDice(10, [7, 1, 2]);
+    expect(rollExpression("3d10k1dh1")!.total).toBe(0);
+    queueDice(10, [6, 1, 9]);
+    expect(rollExpression("3d10k1d1")!.total).toBe(9);
+  });
+
+  it("marks criticals without changing the result", () => {
+    queueDice(20, [4, 20]);
+    const result = rollExpression("2d20cs")!;
+    expect(result).toMatchObject({ total: 24, criticalSuccesses: 1 });
+    queueDice(10, [2, 8, 1]);
+    expect(rollExpression("3d10cf<3")!).toMatchObject({ total: 11, criticalFailures: 2 });
+  });
+
+  it("sorts the dice shown, ascending by default", () => {
+    queueDice(6, [4, 3, 5, 1]);
+    expect(rollExpression("4d6s")!.rolls).toEqual([1, 3, 4, 5]);
+    queueDice(6, [4, 3, 5, 1]);
+    expect(rollExpression("4d6sd")!.rolls).toEqual([5, 4, 3, 1]);
+  });
+
+  it("does arithmetic with the usual precedence (spec: 1d6+2*3 and (1d6+2)*3)", () => {
+    queueDice(6, [4]);
+    expect(rollExpression("1d6+2*3")!.total).toBe(10);
+    queueDice(6, [4]);
+    expect(rollExpression("(1d6+2)*3")!.total).toBe(18);
+    queueDice(6, [5]);
+    expect(rollExpression("d6^2")!.total).toBe(25);
+    queueDice(15, [7]);
+    expect(rollExpression("d15%2")!.total).toBe(1);
+  });
+
+  it("computes the count or sides of dice", () => {
+    queueDice(10, [3, 4]);
+    expect(rollExpression("(4-2)d10")!.rolls).toEqual([3, 4]);
+    queueDice(12, [12, 1, 6]);
+    expect(rollExpression("3d(2*6)")!.total).toBe(19);
+  });
+
+  it("shows a fractional total to two decimals", () => {
+    queueDice(10, [3]);
+    expect(formatRollResult(rollExpression("d10/3")!)).toBe("d10/3=1");
+    queueDice(10, [5]);
+    expect(formatRollResult(rollExpression("d10/3")!)).toBe("d10/3=1.67");
+  });
+
+  it("keeps the higher of a Savage Worlds trait die and wild die", () => {
+    queueDice(8, [8, 3]);
+    // d8! rolls 8 then 3 (11); d6! rolls 2: keep the higher sub-roll.
+    vi.spyOn(Math, "random")
+      .mockReturnValueOnce((8 - 0.5) / 8)
+      .mockReturnValueOnce((3 - 0.5) / 8)
+      .mockReturnValueOnce((2 - 0.5) / 6);
+    const result = rollExpression("{d8!, d6!}kh1")!;
+    expect(result.total).toBe(11);
+    expect(formatRollResult(result)).toBe("{d8!, d6!}kh1 =11");
+  });
+
+  it("sums a group, keeps or drops sub-rolls by total, and counts sub-rolls meeting a target", () => {
+    queueDice(6, [2, 6, 4, 2, 1]);
+    expect(rollExpression("{4d6, d6}")!.total).toBe(15);
+    queueDice(10, [1, 1, 9, 9]);
+    expect(rollExpression("{2d10, 2d10}d1")!.total).toBe(18);
+    queueDice(20, [11, 7, 19]);
+    expect(rollExpression("{3d20+5}>40")!).toMatchObject({ successes: 1, isPool: true });
+  });
+
+  it("rejects what it can't roll", () => {
+    for (const expr of ["2+3", "{4d10*(2+5d6)}k2", "(2d6", "{2d6, }", "d0", "1000d6", "2d6 +", "d6/0"]) {
+      expect(rollExpression(expr), expr).toBeUndefined();
+    }
+  });
+
+  it.each(["2d6!p", "2d6!!p>4", "2d10u", "2d10uo", "4d6u=5", "2d20cs", "4d10cf<3", "4d6sd", "4d10dh1dl2", "{d8!, d6!}kh1", "{4d6, 2d10, d4}"])(
+    "%s is highlighted",
+    (expr) => expect(isDiceExpression(expr)).toBe(true)
+  );
 });

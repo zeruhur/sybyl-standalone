@@ -67,17 +67,19 @@ describe("askOracle", () => {
 });
 
 describe("formatOracleResult", () => {
-  it("matches the lonelog worked-example style", () => {
+  it("writes Lonelog v1.7's full answer form", () => {
     rollD100(40);
-    expect(formatOracleResult(askOracle("fifty_fifty", 4)!)).toBe("Yes, but... (CF=4)");
+    expect(formatOracleResult(askOracle("fifty_fifty", 4)!)).toBe("d: Oracle (50/50, CF 4) d100=40 vs 45 -> Yes, but...");
     rollD100(99);
-    expect(formatOracleResult(askOracle("fifty_fifty", 7)!)).toBe("Exceptional No (CF=7)");
+    expect(formatOracleResult(askOracle("fifty_fifty", 7)!)).toBe("d: Oracle (50/50, CF 7) d100=99 vs 60 -> Exceptional no");
   });
 
-  it("appends a random event line when triggered", () => {
+  it("follows a random event with a tbl: block", () => {
     rollD100(33);
-    const text = formatOracleResult(askOracle("fifty_fifty", 5)!);
-    expect(text.split("\n")[1]).toMatch(/^Random Event: Event Focus: .+ — Subject: .+$/);
+    const lines = formatOracleResult(askOracle("fifty_fifty", 5)!).split("\n");
+    expect(lines[1]).toBe("tbl: Random Event");
+    expect(lines[2]).toMatch(/^ {2}Focus: d12=\d+ -> .+$/);
+    expect(lines[3]).toMatch(/^ {2}Subject: -> .+$/);
   });
 });
 

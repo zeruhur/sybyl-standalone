@@ -6,6 +6,74 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 
 ## Unreleased
 
+## v0.18.0 - 2026-11-16
+
+Sybyl now follows Lonelog v1.7 and the v1.1 Dice and Cards add-ons.
+
+### Added
+- The dice roller covers the whole Dice Notation add-on: penetrating dice (`2d6!p`), unique
+  results (`2d10u`), critical marks (`cs`/`cf`), sorting (`s`/`sd`), dropping both ends at once
+  (`4d10dh1dl2`), arithmetic with brackets and `* / % ^`, and group rolls such as the Savage Worlds
+  `{d8!, d6!}kh1`. The editor highlights them all, and a group roll or a bracketed expression
+  typed in the composer (`d: Damage (1d6+2)*3`) is rolled as a whole. `d%` is now highlighted and
+  rolled from a log line too; it wasn't before.
+- The Toolkit's Tables tab rolls on tables written in the note itself: `tbl: Name (d6)` with
+  numbered entries (ranges like `1-2:` and `d66` work), or a list such as
+  `tbl: Mood [Tense, Hopeful, Uncanny]`. The result is a Lonelog line,
+  `tbl: Forest Encounter d6=5 -> Traveler on the road`.
+- Card draws record the deck's state as the Cards add-on's `[Deck:]` tag
+  (`[Deck:Standard|×51|out:+Qs]`), and Reshuffle gives an insertable `[Deck:Standard|×52|out:none]`.
+- Tags from add-ons (`[Deck:]`, `[Inv:]`, `[Wealth:]`…) and events (`[E:]`) are now passed to the
+  AI with the rest of the scene, and add-on tags get an "Other tags" section on the Dashboard.
+- The composer logs your own beats without calling the AI: start a line with `d:`, `tbl:` or `=>`.
+  A `d:` or `tbl:` line with a dice expression but no result is rolled for you
+  (`d: Strike 2d6+2 vs 8` becomes `d: Strike 2d6+2=9 vs 8`). Logged lines join the code block
+  the log ends in instead of opening a new one each time.
+- Compact Lonelog lines, where several beats share one line
+  (`@ Sneak d: 2d6=8 -> Fail => Seen`), have every symbol highlighted, and the AI reads them as
+  separate beats.
+- Meta notes such as `(note: …)`, `(todo: …)` and `(retcon: …)` are shown dimmed. Asides are no
+  longer sent to the AI as part of the story; `(retcon: …)` and `(interp: …)` still are.
+- In parallel storylines, the AI is told whose storyline it is: the POV character declared on the
+  storyline's first scene line (`T2-S1 *City archives* @(Jordan)`), so it knows who a bare `@` means.
+- The Custom Deck is saved with each note like the card deck, so its shuffle survives a restart. If
+  the deck folder's images have changed since, the note starts a fresh shuffle.
+
+### Changed
+- The AI's notation instructions follow Lonelog v1.7. It's told that `->` marks outcomes only, and
+  not to write `d:`/`tbl:` lines or meta notes. It's also told how to read the log: tags show
+  current state, `d:` gives verdicts and `tbl:` gives content, and `(retcon: …)`/`(interp: …)`
+  notes take precedence. This changes the system prompt, so the first request on each note
+  rebuilds the Anthropic prompt cache once.
+- Toolkit results insert as full Lonelog v1.7 lines instead of bare values:
+  - Dice: `d: 2d6+3=12`.
+  - Tables: `tbl: Loot -> A broken sword`.
+  - Words: `tbl: Noun -> lantern`.
+  - Cards: `tbl: draw=Qs`.
+  - Oracle: the full answer form, `d: Oracle (50/50, CF 4) d100=40 vs 45 -> Yes, but...`. A random
+    event follows as a `tbl: Random Event` block with Focus and Subject lines.
+- Insert Scene Template follows Lonelog v1.7: the `d:` line has a slot for its outcome
+  (`d:  -> `), there's a `tbl:` line, and the beats sit in a code block when code-block wrapping
+  is on.
+- Tags now follow Lonelog v1.7's update rules, so a later tag changes the earlier state instead
+  of replacing it. `[PC:Alex|HP-2]` lowers HP and keeps the PC's other stats. `[N:Jonah|-injured]`,
+  `[N:Jonah|friendly>hostile]`, `status:captured`, `×4` and `[Clock:Alarm+1]` all work, and so do
+  tags split across several lines. This applies to what the AI is told about the scene, the
+  Dashboard and the PCs in Campaign Info. A PC's or NPC's state now carries over from earlier in
+  the log, not only from the last lines.
+- The Dashboard shows `[Thread:Escape|Open>Closed]` as Closed, and lists `[Timer:]` tags.
+- `[Timer:]`, `[E:]` and `[#N:Name]` reference tags are highlighted. An old `[E:Name 2/6]` is read
+  as a clock.
+- Updated for Lonelog v1.7 and the v1.1 Dice and Cards add-ons:
+  - Cards and dice are highlighted on `tbl:` lines too (most card draws are `tbl:` now). Since a
+    card now always follows `=`, a word like "As" on a `d:` line is no longer mistaken for a card.
+  - Generate Adventure Seed writes a `tbl:` block (`gen:` was folded into `tbl:` in v1.7). Each
+    line reads `Premise: -> …`, which marks it as a result rather than a table entry.
+  - `tbl:` lines are highlighted in the editor like the other beat lines, and the AI sees them as
+    recent beats.
+  - Toolkit dice results put a space before `=` whenever the expression has a compare point or
+    ends in a re-roll, as the add-on now requires: `5d10>=7 =3`, not `5d10>=7=3`.
+
 ## v0.17.0 - 2026-10-06
 
 ### Added

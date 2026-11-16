@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
@@ -25,15 +25,16 @@ import SelectionBubble, { SelectionBubbleHandle } from "./components/SelectionBu
 import StatusToast from "./components/StatusToast";
 import { HeadingPickerHandle } from "./components/HeadingPicker";
 import { BookOpen, CaseSensitive, Command, Dices, Ellipsis, Info, LayoutDashboard, Menu, Moon, Search, Settings, Sun } from "lucide-react";
-import { ComposerIntent } from "./lib/composer";
+import { appendLogLine, buildLogLine, ComposerIntent, isLogMode } from "./lib/composer";
 import { checkExternalChange, createVaultFile, deleteVaultFile, exportNoteTo, ExternalChangeError, getSavedVaultPath, importNoteFile, importSourceFile, initAndroidVault, isAndroid, listVaultFiles, loadSetting, openVaultFile, pickVaultFolder, readVaultFile, saveSetting, writeVaultFile } from "./lib/vault";
 import { deleteSnapshots, listSnapshots, maybeAutoSnapshot, saveSnapshot, Snapshot } from "./lib/history";
 import { formatRollResult, rollExpression } from "./lib/toolkit/diceEngine";
-import { createDeckSession, DeckSession, DeckType, drawCard, reshuffleDeck } from "./lib/toolkit/cardEngine";
+import { createDeckSession, DeckSession, DeckType, drawCard, formatDrawLines, formatReshuffleTag, reshuffleDeck } from "./lib/toolkit/cardEngine";
 import { generateWord, WORD_CATEGORIES } from "./lib/toolkit/wordGenerators";
 import { addLogEntry, ToolkitLogEntry } from "./lib/toolkit/history";
-import { deleteDeckState, loadDeckState, saveDeckState } from "./lib/toolkit/deckState";
+import { deleteDeckState, loadCustomDeckState, loadDeckState, saveCustomDeckState, saveDeckState } from "./lib/toolkit/deckState";
 import { listTableFiles, parseTableEntries, readTableFile, rollTable, TableFile } from "./lib/toolkit/tables";
+import { parseInlineTables, rollInlineTable, tableDisplayName } from "./lib/lonelog/inlineTables";
 import { askOracle, formatOracleResult, normalizeChaosFactor, ORACLE_LIKELIHOODS } from "./lib/toolkit/oracleEngine";
 import {
   createCustomDeckSession,
@@ -193,6 +194,8 @@ export default function App() {
   const [files, setFiles] = useState<VaultFile[]>([]);
   const [activeFile, setActiveFile] = useState<VaultFile | null>(null);
   const [body, setBody] = useState("");
+  // Tables defined in the open note's own text (Lonelog v1.7 §4.3.1-4.3.2), for the Toolkit.
+  const noteTables = useMemo(() => parseInlineTables(body), [body]);
   const [settings, setSettings] = useState<SybylSettings>(DEFAULT_SETTINGS);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
@@ -355,6 +358,14 @@ export default function App() {
       void loadDeckState(vaultPath, fresh.name).then((deck) => {
         if (activeFileRef.current?.path === fresh.path) setDeckSession(deck);
       });
+      // Its custom image deck too, matched against the deck folder's current images.
+      setCustomDeckSession(null);
+      void listDeckFolders(vaultPath)
+        .then((folders) => loadCustomDeckState(vaultPath, fresh.name, folders))
+        .then((deck) => {
+          if (activeFileRef.current?.path === fresh.path) setCustomDeckSession(deck);
+        })
+        .catch(() => {});
     }
   }
 
@@ -1247,7 +1258,10 @@ Keep it concise — 4 bullet points, one short sentence each.`;
         // Scene titles are always Heading 3, and the trailing *...* is required by the scene
         // parser/highlighter's regex even with no description to show.
         const header = `### S${counter} *${sceneDesc}*`;
-        const block = `${header}\n\n@ \nd: \n=> \n\n? \n-> \n=> \n`;
+        // Lonelog v1.7 §8.4: a d: line carries its outcome after `->` on the same line; tbl: is the
+        // v1.7 beat for content from a table. Fenced like the spec's template when that's on.
+        const beats = `@ \nd:  -> \n=> \n\n? \n-> \n=> \n\ntbl:  -> `;
+        const block = `${header}\n\n${lonelogOpts().wrapInCodeBlock ? `\`\`\`\n${beats}\n\`\`\`` : beats}\n`;
         insertFormatted(block, "cursor");
         if (settings.lonelogAutoIncScene) {
           await updateActiveFrontmatter({ scene_counter: counter + 1 });
@@ -1495,7 +1509,9 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
       flashStatus(`Sybyl: couldn't parse dice expression "${expr}".`);
       return undefined;
     }
-    return logToolkit("Dice", formatRollResult(result));
+    // A bare roll is a d: line whose total is the result (Lonelog v1.7 §3.2.1); the player adds
+    // `-> outcome` when it decides something.
+    return logToolkit("Dice", `d: ${formatRollResult(result)}`);
   }
 
   /** Sets the Toolkit card deck, saving it with the open note so the shuffle survives a restart.
@@ -1514,12 +1530,18 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     const session = deckSession ?? createDeckSession("standard");
     const { session: nextSession, card } = drawCard(session);
     updateDeck(nextSession);
-    return logToolkit("Cards", card, session.type === "tarot" ? "Tarot" : undefined);
+    if (!card) return undefined;
+    // Cards add-on v1.1: `tbl: draw=Qs`, then the deck's state as a [Deck:] tag.
+    const reshuffled = session.drawPile.length === 0;
+    return logToolkit("Cards", formatDrawLines(card, nextSession, reshuffled), session.type === "tarot" ? "Tarot" : undefined);
   }
 
-  function toolkitReshuffleDeck() {
-    if (!deckSession) return;
-    updateDeck(reshuffleDeck(deckSession));
+  /** Returns the reset deck tag, so a reshuffle can be recorded in the log too. */
+  function toolkitReshuffleDeck(): string | undefined {
+    const session = deckSession ?? createDeckSession("standard");
+    const next = reshuffleDeck(session);
+    updateDeck(next);
+    return formatReshuffleTag(next);
   }
 
   function toolkitSetDeckType(type: DeckType) {
@@ -1528,14 +1550,29 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
 
   function toolkitGenerateWord(categoryId: string): string | undefined {
     const category = WORD_CATEGORIES.find((c) => c.id === categoryId)?.label;
-    return logToolkit("Words", generateWord(categoryId), category);
+    const word = generateWord(categoryId);
+    // Generated content is a tbl: result (v1.7 §4.3): `tbl: Noun -> lantern`.
+    return logToolkit("Words", word && `tbl: ${category ?? "Word"} -> ${word}`, category);
+  }
+
+  function toolkitRollNoteTable(name: string): string | undefined {
+    const table = noteTables.find((t) => t.name === name);
+    if (!table) return undefined;
+    const rolled = rollInlineTable(table);
+    if (!rolled.line) {
+      flashStatus(`Sybyl: ${table.name} rolled ${rolled.value}, which no entry covers.`);
+      return undefined;
+    }
+    return logToolkit("Tables", rolled.line, table.name);
   }
 
   async function toolkitRollTable(path: string): Promise<string | undefined> {
     try {
       const content = await readTableFile(path);
       const table = tableFiles.find((t) => t.path === path)?.name;
-      return logToolkit("Tables", rollTable(parseTableEntries(content)), table);
+      const result = rollTable(parseTableEntries(content));
+      // A weighted roll has no die to show, so the roll is left out: `tbl: Loot -> A broken sword`.
+      return logToolkit("Tables", result && `tbl: ${tableDisplayName(table ?? "Table")} -> ${result}`, table);
     } catch (error) {
       flashStatus(`Sybyl error: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
@@ -1574,22 +1611,33 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
     return logToolkit("Oracle", formatOracleResult(result), likelihood);
   }
 
+  /** Sets the custom image deck, saving it with the open note like the card deck. */
+  function updateCustomDeck(next: CustomDeckSession | null) {
+    setCustomDeckSession(next);
+    const file = activeFileRef.current;
+    if (file && vaultPath) {
+      saveCustomDeckState(vaultPath, file.name, next).catch((error) => {
+        flashStatus(`Sybyl error: couldn't save the custom deck: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
+  }
+
   function toolkitSetCustomDeck(folder: DeckFolder) {
     (async () => {
       const session = await createCustomDeckSession(folder);
       if (!session) {
         flashStatus(`Sybyl: no images found in deck "${folder.name}".`);
-        setCustomDeckSession(null);
+        updateCustomDeck(null);
         return;
       }
-      setCustomDeckSession(session);
+      updateCustomDeck(session);
     })();
   }
 
   async function toolkitDrawCustomCard(): Promise<{ path: string; dataUri: string } | undefined> {
     if (!customDeckSession) return undefined;
     const { session, card } = drawCustomCard(customDeckSession);
-    setCustomDeckSession(session);
+    updateCustomDeck(session);
     if (!card) return undefined;
     // Logged by file name: an image has no text form to insert into a note.
     logToolkit("Custom Deck", card.split(/[\\/]/).pop() ?? card, undefined, false);
@@ -1603,7 +1651,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
 
   function toolkitReshuffleCustomDeck() {
     if (!customDeckSession) return;
-    setCustomDeckSession(reshuffleCustomDeck(customDeckSession));
+    updateCustomDeck(reshuffleCustomDeck(customDeckSession));
   }
 
   function toolkitCutUp(text: string, mode: CutUpMode): string | undefined {
@@ -1623,6 +1671,7 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
    * Interpret works on the editor selection, and so inserts below it like the palette command. */
   async function handleComposerSubmit(intent: ComposerIntent): Promise<boolean> {
     if (!activeFileRef.current || loading) return false;
+    if (isLogMode(intent.mode)) return logComposerLine(intent);
     switch (intent.mode) {
       case "oracle":
         return playAskOracle(intent.text, intent.detail, "end-of-note");
@@ -1636,7 +1685,25 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
         const selected = view ? getSelection(view) : "";
         return selected ? playInterpretOracle(selected) : false;
       }
+      default:
+        return false;
     }
+  }
+
+  /** Composer `d:`/`tbl:`/`=>` lines: logged at the end of the note as written (a `d:`/`tbl:`
+   * dice expression without a result is rolled first), with no AI call. */
+  function logComposerLine(intent: ComposerIntent): boolean {
+    const file = activeFileRef.current;
+    const view = editorViewRef.current;
+    if (!file || !view) return false;
+    const line = buildLogLine(intent);
+    const change = appendLogLine(currentDoc(), line, lonelogOpts().wrapInCodeBlock);
+    // Cursor after the new line, scrolled into view; focus stays in the composer for the next line.
+    view.dispatch({ changes: change, selection: { anchor: change.from + change.insert.length }, scrollIntoView: true });
+    const nextBody = docWithoutLiveOutput(view.state);
+    setBody(nextBody);
+    persistBody(file, nextBody);
+    return true;
   }
 
   function editorHasSelection(): boolean {
@@ -1886,6 +1953,8 @@ Be concise and specific. Preserve game-mechanical details. Omit flavor prose and
                     onSetDeckType={toolkitSetDeckType}
                     onGenerateWord={toolkitGenerateWord}
                     onRollTable={toolkitRollTable}
+                    noteTables={activeFile ? noteTables.map((t) => t.name) : []}
+                    onRollNoteTable={toolkitRollNoteTable}
                     onRefreshTables={() => vaultPath && refreshTableFiles(vaultPath)}
                     onInsert={toolkitInsert}
                     chaosFactor={chaosFactor}

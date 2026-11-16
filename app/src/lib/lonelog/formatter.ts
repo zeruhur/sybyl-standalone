@@ -80,13 +80,22 @@ export function formatExpandScene(aiProse: string, _opts: LonelogFormatOptions):
   return `\\---\n${cleanAiText(aiProse)}\n---\\`;
 }
 
+/** Lonelog v1.7 §4.3.3: a result axis is `Axis: roll -> result`, the roll optional. Without the
+ * `->`, an indented line under `tbl:` reads as a table *definition* entry (D.3.5), so a rollless
+ * `Premise: text` becomes `Premise: -> text`. */
+function toResultAxis(line: string): string {
+  if (line.includes("->")) return line;
+  const match = line.match(/^([^:]{1,40}):\s*(.+)$/);
+  return match ? `${match[1]}: -> ${match[2]}` : `-> ${line}`;
+}
+
 export function formatAdventureSeed(aiText: string, opts: LonelogFormatOptions): string {
   const axes = cleanAiText(aiText)
     .split("\n")
     .filter(Boolean)
-    .map((line) => "  " + line.replace(/^[-*]\s*/, ""))
+    .map((line) => "  " + toResultAxis(line.replace(/^[-*]\s*/, "")))
     .join("\n");
-  const notation = `gen: Adventure Seed\n${axes}`;
+  const notation = `tbl: Adventure Seed\n${axes}`;
   return opts.wrapInCodeBlock ? fence(notation) : notation;
 }
 

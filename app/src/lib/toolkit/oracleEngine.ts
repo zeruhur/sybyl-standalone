@@ -98,19 +98,31 @@ export function askOracle(likelihoodId: string, chaosFactor: number): OracleResu
   return { likelihoodLabel: likelihood.label, chaosFactor: cf, roll, threshold, answer, exceptional, modifier, randomEvent };
 }
 
-/** Picks a random event focus + subject, e.g. "Event Focus: Move Toward a Thread — Subject: lantern". */
-export function rollRandomEvent(): string {
-  const focus = EVENT_FOCUS_TABLE[Math.floor(Math.random() * EVENT_FOCUS_TABLE.length)];
-  const subject = generateWord("noun") ?? "something";
-  return `Event Focus: ${focus} — Subject: ${subject}`;
+
+export interface RandomEvent {
+  /** The d12 roll on the event focus table. */
+  focusRoll: number;
+  focus: string;
+  subject: string;
 }
 
-/** Renders an oracle result matching lonelog.md's own worked example style
- * (`Yes, but... (CF=4)` / `Exceptional No (CF=7)`), with a random-event line appended when triggered. */
+/** Picks a random event focus (d12 on EVENT_FOCUS_TABLE) and a subject noun. */
+export function rollRandomEvent(): RandomEvent {
+  const focusRoll = 1 + Math.floor(Math.random() * EVENT_FOCUS_TABLE.length);
+  const subject = generateWord("noun") ?? "something";
+  return { focusRoll, focus: EVENT_FOCUS_TABLE[focusRoll - 1], subject };
+}
+
+/** Lonelog v1.7 §3.2.2's full answer form, a `d:` line with the roll and the target:
+ * `d: Oracle (50/50, CF 4) d100=40 vs 45 -> Yes, but...`. The likelihood and Chaos Factor go in
+ * the label, since a parenthesis right after the answer would read as a roll reference. `vs` is
+ * neutral, so it stays true whichever way the roll-under went. A triggered random event follows
+ * as a `tbl:` block, the same shape as the spec's Mythic event example. */
 export function formatOracleResult(result: OracleResult): string {
   const answerText = result.answer === "yes" ? "Yes" : "No";
-  const line = result.exceptional
-    ? `Exceptional ${answerText} (CF=${result.chaosFactor})`
-    : `${answerText}, ${result.modifier}... (CF=${result.chaosFactor})`;
-  return result.randomEvent ? `${line}\nRandom Event: ${rollRandomEvent()}` : line;
+  const answer = result.exceptional ? `Exceptional ${answerText.toLowerCase()}` : `${answerText}, ${result.modifier}...`;
+  const line = `d: Oracle (${result.likelihoodLabel}, CF ${result.chaosFactor}) d100=${result.roll} vs ${result.threshold} -> ${answer}`;
+  if (!result.randomEvent) return line;
+  const event = rollRandomEvent();
+  return `${line}\ntbl: Random Event\n  Focus: d12=${event.focusRoll} -> ${event.focus}\n  Subject: -> ${event.subject}`;
 }

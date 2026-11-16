@@ -65,8 +65,11 @@ You don't have to write Lonelog by hand — most commands insert correctly-tagge
 
 The main pane is a CodeMirror editor with full GFM support (tables, task lists, strikethrough,
 autolinks) plus Lonelog-aware syntax highlighting for scene headers, tags, and dice/card notation
-on `d:` lines. Scene headers get a heading treatment and each beat line (`@`, `?`, `d:`, `->`,
-`=>`) a colored rule down its left edge, so a long log is easy to scan. Changes autosave about half
+on `d:` and `tbl:` lines. Scene headers get a heading treatment and each beat line (`@`, `?`, `d:`,
+`tbl:`, `->`, `=>`) a colored rule down its left edge, so a long log is easy to scan. On compact
+lines (`@ Sneak d: 2d6=8 -> Fail => Seen`) every symbol is highlighted, and meta notes such as
+`(note: …)` are dimmed. Meta notes aren't sent to the AI, except `(retcon: …)` and `(interp: …)`,
+which correct or explain the story. Changes autosave about half
 a second after you stop typing.
 
 **Formatting.** Select some text and a small bubble appears above it with Bold, Italic,
@@ -97,6 +100,9 @@ following Lonelog's own beat symbols, and Enter sends it:
 | `@ Pick the lock` | Declare Action — Sybyl narrates the consequences |
 | `@ Pick the lock d: 2d6=8` | Declare Action with a roll result |
 | `-> Yes, and` | Interpret an oracle result |
+| `d: Strike 2d6+2 vs 8` | Log a roll, no AI. A dice expression without a result is rolled for you: `d: Strike 2d6+2=9 vs 8` |
+| `tbl: Loot d100 -> A sword` | Log a table result, no AI (rolled the same way if it has no result) |
+| `=> The door gives way` | Log a consequence, no AI |
 
 The chips above the input (**? Oracle**, **@ Action**, **S Scene**, **-> Interpret**) do the same
 without typing a symbol: pick one, then type plain text. **Scene** can be sent blank to let Sybyl
@@ -104,7 +110,8 @@ choose the setting, and **Interpret** can be sent blank to interpret whatever te
 in the editor. **Expand**, **What now?** and **What can I do?** run immediately, and **More…** opens
 the full command palette.
 
-Everything sent from the composer is appended to the **end** of the log, where play continues. The
+Everything sent from the composer is appended to the **end** of the log, where play continues.
+Logged `d:`/`tbl:`/`=>` lines join the code block the log ends in, if there is one. The
 command palette (Ctrl+K) still inserts at the cursor, for when you want output somewhere else.
 Ctrl+J jumps to the composer from anywhere. The input is only cleared once the result has landed,
 so a failed or cancelled request doesn't lose what you typed.
@@ -128,16 +135,18 @@ button runs the Edit Campaign Info command.
 ## Dashboard: threads, clocks, tracks
 
 Click **Dashboard** in the command bar (needs an open note) to open the side panel's Dashboard
-tab, showing every `[Thread:]`, `[Clock:]`,
-and `[Track:]` tag in the current note, aggregated live as you type:
+tab, showing every `[Thread:]`, `[Clock:]`, `[Track:]` and `[Timer:]` tag in the current note,
+aggregated live as you type:
 
 - **Threads** — open ones are listed directly; closed ones collapse behind a "N closed" toggle.
 - **Clocks** and **Tracks** — each renders as a labeled progress bar (`current/total`).
+- **Timers** — each with its current count.
+- **Other tags** — tags from add-ons, such as `[Deck:]` or `[Inv:]`, with their current state.
 
-Only the *last* occurrence of a given name counts as its current state — re-declaring
-`[Clock:Ritual 8/12]` later in the log overrides an earlier `[Clock:Ritual 5/12]`, exactly like
-Lonelog's own convention. The dashboard reads the whole note, not just recent lines, so nothing
-scrolls out of view.
+Tags follow Lonelog v1.7's update rules: a later tag changes the state instead of replacing it.
+`[Clock:Ritual+1]` advances a clock, `[Clock:Ritual 8/12]` sets it, and
+`[Thread:Escape|Open>Closed]` closes a thread. The dashboard reads the whole note, not just recent
+lines, so nothing scrolls out of view.
 
 ## Version history
 
@@ -243,7 +252,11 @@ set of offline, deterministic tools — none of them call an AI provider:
   die (`4d6min3`, `4d6max3`), compounding (`2d6!!`, where re-rolls add onto the same die), and
   re-rolls (`d6r` re-rolls 1s until something else comes up, `d6ro` re-rolls once,
   `4d10r<=3` re-rolls anything 3 or under). Modifiers can be written in any order; they're
-  applied in the notation's standard order.
+  applied in the notation's standard order. Also: penetrating dice (`2d6!p`, each re-roll counts
+  one less), unique results (`2d10u`), critical marks (`2d20cs`, `d20cf`), sorting (`4d6s`,
+  `4d6sd`), dropping both ends (`4d10dh1dl2`), arithmetic (`(1d6+2)*3`, `2d10/d20`, `3d(2*6)`),
+  and group rolls: `{d8!, d6!}kh1` keeps the higher of a Savage Worlds trait die and Wild Die,
+  `{3d20+5}>40` counts the sub-rolls that beat 40.
 - **Oracle** — a deterministic Yes/No oracle: pick a likelihood (Impossible…Certain) and a
   1–9 Chaos Factor, and it rolls 1d100 against a computed threshold, flagging exceptional results
   and random events. The Chaos Factor is saved with the open note (as `chaos_factor` in its
@@ -255,19 +268,33 @@ set of offline, deterministic tools — none of them call an AI provider:
   With no note open, the deck lasts for the session only.
 - **Custom Deck** — draws images from `<vault>/decks/<name>/` (any folder of image files you add
   yourself). Preview-only — there's no Lonelog notation for an image, so draws can't be inserted.
+  Like the card deck, each note keeps its own shuffle across restarts; if you add or remove images
+  in the folder, the note starts a fresh shuffle.
 - **Words** — 8 categories of curated word generators (noun, verb, adjective, job, town name,
   etc.) for quick naming.
 - **Cut-up** — the Burroughs cut-up technique: shuffles a block of text word-by-word or
   line-by-line. Text can be typed directly or loaded from an existing table file.
 - **Tables** — rolls on custom random tables you author yourself as plain `.md`/`.txt` files in
-  `<vault>/tables/`, one entry per line (optionally weighted with a trailing `^N`).
+  `<vault>/tables/`, one entry per line (optionally weighted with a trailing `^N`). It also lists
+  the tables defined in the open note, Lonelog style: `tbl: Forest Encounter (d6)` followed by
+  indented numbered entries (`  1-2: Nothing`, `  3: Tracks`…, and `d66` works), or a list such as
+  `tbl: Mood [Tense, Hopeful, Uncanny]`. A table with a die is rolled with it; one without is
+  picked from at random.
 - **History** — every roll, draw and result from this session, newest first, with the tool and
   the time, so nothing is lost just because you didn't insert it right away. Keeps the last 200;
   **Clear** empties it, and it starts fresh each time you open the app. Custom Deck draws are
   listed by file name, without an Insert button.
 
 Every result has its own **Insert** button, which inserts at the editor cursor and is disabled
-(not hidden) when no note is open.
+(not hidden) when no note is open. Results are written as Lonelog lines, ready for the log:
+
+| Tool | Inserts |
+|---|---|
+| Dice | `d: 2d6+3=12` (add `-> outcome` if the roll decides something) |
+| Oracle | `d: Oracle (50/50, CF 4) d100=40 vs 45 -> Yes, but...`, plus a `tbl: Random Event` block when one triggers |
+| Cards | `tbl: draw=Qs` and the deck's state, `[Deck:Standard|×51|out:+Qs]`; Reshuffle gives `[Deck:Standard|×52|out:none]` |
+| Words | `tbl: Noun -> lantern` |
+| Tables | `tbl: Forest Encounter d6=5 -> Traveler on the road`, or `tbl: Loot -> A broken sword` for a weighted file table |
 
 ## Sources and rules grounding
 

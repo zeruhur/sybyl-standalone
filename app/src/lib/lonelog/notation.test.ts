@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isDiceExpression } from "./diceNotation";
-import { isCardToken } from "./cardNotation";
+import { CARD_TOKEN_REGEX, isCardToken } from "./cardNotation";
 
 describe("isDiceExpression", () => {
   it.each(["d6", "2d6", "3d6+2", "1d20-1", "d%", "4dF", "4dF.1", "4d6kh3", "2d20kl1", "4d6dl1", "3d6!", "5d6!>=5", "6d10>=7", "6d10>=7f=1"])(
@@ -17,4 +17,16 @@ describe("isCardToken", () => {
   );
 
   it.each(["1h", "11s", "M22", "Zz", "AWar1", "Ax"])("rejects %s", (token) => expect(isCardToken(token)).toBe(false));
+});
+
+describe("CARD_TOKEN_REGEX (cards add-on v1.1)", () => {
+  const find = (line: string) => [...line.matchAll(CARD_TOKEN_REGEX)].map((m) => m[0]);
+  it("matches identities after =", () => {
+    expect(find("tbl: draw=Qs -> Dark omen")).toEqual(["Qs"]);
+    expect(find("tbl: Past=5s, Present=Ks, Future=ACu")).toEqual(["5s", "Ks", "ACu"]);
+    expect(find("tbl: draw=4d")).toEqual(["4d"]);
+  });
+  it("ignores bare tokens", () => {
+    expect(find("d: As 2d6=9 -> Hit")).toEqual([]);
+  });
 });

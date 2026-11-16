@@ -26,16 +26,22 @@ function logTime(at: Date): string {
   return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Select-value prefix marking a table defined in the note rather than a vault file path. */
+const NOTE_TABLE = "note:";
+
 interface ToolkitPanelProps {
   deckSession: DeckSession | null;
   tableFiles: TableFile[];
   canInsert: boolean;
   onRollDice: (expr: string) => string | undefined;
   onDrawCard: () => string | undefined;
-  onReshuffleDeck: () => void;
+  onReshuffleDeck: () => string | undefined;
   onSetDeckType: (type: DeckType) => void;
   onGenerateWord: (categoryId: string) => string | undefined;
   onRollTable: (path: string) => Promise<string | undefined>;
+  /** Names of tables defined in the open note (lib/lonelog/inlineTables.ts). */
+  noteTables: string[];
+  onRollNoteTable: (name: string) => string | undefined;
   onRefreshTables: () => void;
   onInsert: (text: string) => void;
   chaosFactor: number;
@@ -64,6 +70,8 @@ export default function ToolkitPanel({
   onSetDeckType,
   onGenerateWord,
   onRollTable,
+  noteTables,
+  onRollNoteTable,
   onRefreshTables,
   onInsert,
   chaosFactor,
@@ -89,7 +97,6 @@ export default function ToolkitPanel({
   const [tableResult, setTableResult] = useState<string | undefined>(undefined);
   const [oracleLikelihood, setOracleLikelihood] = useState("fifty_fifty");
   const [oracleResult, setOracleResult] = useState<string | undefined>(undefined);
-  const [customDeckPath, setCustomDeckPath] = useState("");
   const [customCardDraw, setCustomCardDraw] = useState<{ path: string; dataUri: string } | undefined>(undefined);
   const [cutupText, setCutupText] = useState("");
   const [cutupMode, setCutupMode] = useState<CutUpMode>("words");
@@ -110,9 +117,12 @@ export default function ToolkitPanel({
     setWordResult(onGenerateWord(wordCategory));
   }
 
+  // The table select holds vault table paths and, prefixed with NOTE_TABLE, names of tables
+  // defined in the open note.
   async function rollTable() {
     if (!tablePath) return;
-    setTableResult(await onRollTable(tablePath));
+    if (tablePath.startsWith(NOTE_TABLE)) setTableResult(onRollNoteTable(tablePath.slice(NOTE_TABLE.length)));
+    else setTableResult(await onRollTable(tablePath));
   }
 
   function askOracle() {
@@ -120,7 +130,6 @@ export default function ToolkitPanel({
   }
 
   function setCustomDeck(path: string) {
-    setCustomDeckPath(path);
     setCustomCardDraw(undefined);
     const folder = deckFolders.find((f) => f.path === path);
     if (folder) onSetCustomDeck(folder);
@@ -220,7 +229,7 @@ export default function ToolkitPanel({
             <option value="tarot">Tarot</option>
           </select>
           <button onClick={drawCard}>Draw</button>
-          <button onClick={onReshuffleDeck}>Reshuffle</button>
+          <button onClick={() => setCardResult(onReshuffleDeck())}>Reshuffle</button>
         </div>
         {deckSession && (
           <div className="toolkit-deck-counts">
@@ -247,7 +256,7 @@ export default function ToolkitPanel({
         ) : (
           <>
             <div className="toolkit-row">
-              <select value={customDeckPath} onChange={(e) => setCustomDeck(e.target.value)}>
+              <select value={deckFolders.find((f) => f.name === customDeckSession?.name)?.path ?? ""} onChange={(e) => setCustomDeck(e.target.value)}>
                 <option value="">Choose a deck...</option>
                 {deckFolders.map((f) => (
                   <option key={f.path} value={f.path}>{f.name}</option>
@@ -332,18 +341,30 @@ export default function ToolkitPanel({
       {activeTab === "tables" && (
       <div className="toolkit-section">
         <h4>Tables</h4>
-        {tableFiles.length === 0 ? (
+        {tableFiles.length === 0 && noteTables.length === 0 ? (
           <div className="toolkit-empty">
-            No tables found. Add .md/.txt files to <code>tables/</code> in your vault.
+            No tables found. Add .md/.txt files to <code>tables/</code> in your vault, or define one in
+            the note (<code>tbl: Name (d6)</code> with numbered entries, or <code>tbl: Name [A, B, C]</code>).
             <button onClick={onRefreshTables}>Refresh</button>
           </div>
         ) : (
           <div className="toolkit-row">
             <select value={tablePath} onChange={(e) => setTablePath(e.target.value)}>
               <option value="">Choose a table...</option>
-              {tableFiles.map((t) => (
-                <option key={t.path} value={t.path}>{t.name}</option>
-              ))}
+              {noteTables.length > 0 && (
+                <optgroup label="In this note">
+                  {noteTables.map((name) => (
+                    <option key={name} value={`${NOTE_TABLE}${name}`}>{name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {tableFiles.length > 0 && (
+                <optgroup label="Vault tables">
+                  {tableFiles.map((t) => (
+                    <option key={t.path} value={t.path}>{t.name}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             <button onClick={rollTable} disabled={!tablePath}>Roll</button>
             <button onClick={onRefreshTables}>Refresh</button>

@@ -1,15 +1,37 @@
+import { applyTag, formatElement, scanTags, TagElement } from "./tags";
+import { isAsideMetaNote, LINE_START_BEAT, splitCompactBeats } from "./beats";
+
 export interface LonelogContext {
   lastSceneId: string;
   lastSceneDesc: string;
+  /** The current storyline's point-of-view character, who a bare `@` means (v1.7 §5.3.3). */
+  pov: string;
   activeNPCs: string[];
   activeLocations: string[];
   activeThreads: string[];
   activeClocks: string[];
   activeTracks: string[];
+  activeTimers: string[];
+  /** Every other tag mentioned, add-on types and events included: `[Deck:Main|×50|out:Qs]`. */
+  otherTags: string[];
   pcState: string[];
   recentBeats: string[];
 }
 
+/** Elements that get their own line in the model's context, by tag type. */
+const CONTEXT_TYPES = {
+  N: "activeNPCs",
+  L: "activeLocations",
+  Thread: "activeThreads",
+  Clock: "activeClocks",
+  Track: "activeTracks",
+  Timer: "activeTimers",
+  PC: "pcState"
+} as const;
+
+/** Builds the Lonelog context sent with each request. Scene and beats come from the last
+ * `depthLines` lines. Tags accumulate (Lonelog v1.7 §4.1), so each element's state is replayed
+ * from the whole log, but only elements mentioned in those last lines are included. */
 export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogContext {
   const bodyWithoutFM = noteBody.replace(/^---[\s\S]*?---\r?\n/, "");
   const lines = bodyWithoutFM.split(/\r?\n/);
@@ -17,31 +39,22 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
   const ctx: LonelogContext = {
     lastSceneId: "",
     lastSceneDesc: "",
+    pov: "",
     activeNPCs: [],
     activeLocations: [],
     activeThreads: [],
     activeClocks: [],
     activeTracks: [],
+    activeTimers: [],
+    otherTags: [],
     pcState: [],
     recentBeats: []
   };
 
   const sceneRe = /^(?:#+\s+)?(T\d+-)?S(\d+[\w.]*)\s*\*([^*]*)\*/;
-  const npcRe = /\[N:([^\]]+)\]/g;
-  const locRe = /\[L:([^\]]+)\]/g;
-  const threadRe = /\[Thread:([^\]]+)\]/g;
-  const clockRe = /\[Clock:([^\]]+)\]/g;
-  const trackRe = /\[Track:([^\]]+)\]/g;
-  const pcRe = /\[PC:([^\]]+)\]/g;
-  const beatRe = /^(@|\?|d:|->|=>)/;
-  const skipRe = /^(#|---|>\s*\[|\[N:|\[L:|\[Thread:|\[Clock:|\[Track:|\[PC:)/;
-
-  const npcMap = new Map<string, string>();
-  const locMap = new Map<string, string>();
-  const threadMap = new Map<string, string>();
-  const clockMap = new Map<string, string>();
-  const trackMap = new Map<string, string>();
-  const pcMap = new Map<string, string>();
+  const beatRe = LINE_START_BEAT;
+  // Tag-only lines, plus the continuation and closing lines of a multi-line tag (§4.1.8).
+  const skipRe = /^(#|---|>\s*\[|\[#?[A-Z][A-Za-z]*:|\|)|^\]$/;
 
   for (const rawLine of window) {
     const line = rawLine.trim();
@@ -50,25 +63,40 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
       ctx.lastSceneId = `${sceneMatch[1] ?? ""}S${sceneMatch[2]}`;
       ctx.lastSceneDesc = sceneMatch[3].trim();
     }
-    for (const match of line.matchAll(npcRe)) npcMap.set(match[1].split("|")[0], match[1]);
-    for (const match of line.matchAll(locRe)) locMap.set(match[1].split("|")[0], match[1]);
-    for (const match of line.matchAll(threadRe)) threadMap.set(match[1].split("|")[0], match[1]);
-    for (const match of line.matchAll(clockRe)) clockMap.set(match[1].split(" ")[0], match[1]);
-    for (const match of line.matchAll(trackRe)) trackMap.set(match[1].split(" ")[0], match[1]);
-    for (const match of line.matchAll(pcRe)) pcMap.set(match[1].split("|")[0], match[1]);
     if (beatRe.test(line)) {
-      ctx.recentBeats.push(line);
-    } else if (line.length > 0 && !skipRe.test(line) && !sceneRe.test(line)) {
+      ctx.recentBeats.push(...splitCompactBeats(line));
+    } else if (line.length > 0 && !skipRe.test(line) && !sceneRe.test(line) && !isAsideMetaNote(line)) {
       ctx.recentBeats.push(line);
     }
   }
 
-  ctx.activeNPCs = [...npcMap.values()];
-  ctx.activeLocations = [...locMap.values()];
-  ctx.activeThreads = [...threadMap.values()];
-  ctx.activeClocks = [...clockMap.values()];
-  ctx.activeTracks = [...trackMap.values()];
-  ctx.pcState = [...pcMap.values()];
+  // A storyline declares its POV once, at the end of its first scene line (`T2-S1 *City* @(Jordan)`),
+  // which may be long before the window, so the whole log is searched.
+  const storyline = /^(T\d+)-/.exec(ctx.lastSceneId)?.[1];
+  if (storyline) {
+    for (const rawLine of lines) {
+      const m = /^(?:#+\s+)?(T\d+)-S\d+[\w.]*\s*\*[^*]*\*\s*@\(([^)]+)\)/.exec(rawLine.trim());
+      if (m && m[1] === storyline) ctx.pov = m[2].trim();
+    }
+  }
+
+  let windowStart = 0;
+  for (let i = 0; i < lines.length - window.length; i++) {
+    windowStart = bodyWithoutFM.indexOf("\n", windowStart) + 1;
+  }
+  const state = new Map<string, TagElement>();
+  const mentioned = new Set<string>();
+  for (const occ of scanTags(bodyWithoutFM)) {
+    const key = applyTag(state, occ);
+    if (key && occ.index >= windowStart) mentioned.add(key);
+  }
+  for (const key of mentioned) {
+    const el = state.get(key);
+    if (!el) continue;
+    if (el.type in CONTEXT_TYPES) ctx[CONTEXT_TYPES[el.type as keyof typeof CONTEXT_TYPES]].push(formatElement(el));
+    else ctx.otherTags.push(`[${el.type}:${formatElement(el)}]`);
+  }
+
   ctx.recentBeats = ctx.recentBeats.slice(-10);
   return ctx;
 }
@@ -76,6 +104,7 @@ export function parseLonelogContext(noteBody: string, depthLines = 60): LonelogC
 export function serializeContext(ctx: LonelogContext): string {
   const lines: string[] = [];
   if (ctx.lastSceneId) lines.push(`Current scene: ${ctx.lastSceneId} *${ctx.lastSceneDesc}*`);
+  if (ctx.pov) lines.push(`Point of view in this storyline: ${ctx.pov} (a bare "@" action is ${ctx.pov}'s)`);
   if (ctx.pcState.length) lines.push(`PC: ${ctx.pcState.map((state) => `[PC:${state}]`).join(" ")}`);
   if (ctx.activeNPCs.length) lines.push(`NPCs: ${ctx.activeNPCs.map((state) => `[N:${state}]`).join(" ")}`);
   if (ctx.activeLocations.length) {
@@ -90,6 +119,10 @@ export function serializeContext(ctx: LonelogContext): string {
   if (ctx.activeTracks.length) {
     lines.push(`Tracks: ${ctx.activeTracks.map((state) => `[Track:${state}]`).join(" ")}`);
   }
+  if (ctx.activeTimers.length) {
+    lines.push(`Timers: ${ctx.activeTimers.map((state) => `[Timer:${state}]`).join(" ")}`);
+  }
+  if (ctx.otherTags.length) lines.push(`Other tags: ${ctx.otherTags.join(" ")}`);
   if (ctx.recentBeats.length) {
     lines.push("Recent beats:");
     ctx.recentBeats.forEach((beat) => lines.push(`  ${beat}`));

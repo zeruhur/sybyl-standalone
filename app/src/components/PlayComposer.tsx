@@ -1,11 +1,15 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { ComposerIntent, ComposerMode, composerIntentReady, detectPrefixMode, parseComposerInput } from "../lib/composer";
 
-const MODES: { id: ComposerMode; symbol: string; label: string; send: string; placeholder: string }[] = [
-  { id: "oracle", symbol: "?", label: "Oracle", send: "Ask", placeholder: "Is the guard asleep?   (add  -> Yes, but  if you already rolled)" },
-  { id: "action", symbol: "@", label: "Action", send: "Act", placeholder: "Pick the lock   (add  d: 2d6=8  to report a roll)" },
-  { id: "scene", symbol: "S", label: "Scene", send: "Start", placeholder: "Dark alley, midnight   (leave blank to let Sybyl set the scene)" },
-  { id: "interpret", symbol: "->", label: "Interpret", send: "Interpret", placeholder: "Yes, and...   (leave blank to interpret the selected text)" }
+const MODES: { id: ComposerMode; symbol: string; label: string; send: string; placeholder: string; chip: boolean }[] = [
+  { id: "oracle", symbol: "?", label: "Oracle", send: "Ask", placeholder: "Is the guard asleep?   (add  -> Yes, but  if you already rolled; start with  d:  tbl:  =>  to just log a line)", chip: true },
+  { id: "action", symbol: "@", label: "Action", send: "Act", placeholder: "Pick the lock   (add  d: 2d6=8  to report a roll)", chip: true },
+  { id: "scene", symbol: "S", label: "Scene", send: "Start", placeholder: "Dark alley, midnight   (leave blank to let Sybyl set the scene)", chip: true },
+  { id: "interpret", symbol: "->", label: "Interpret", send: "Interpret", placeholder: "Yes, and...   (leave blank to interpret the selected text)", chip: true },
+  // Prefix-only modes that log the line without calling the AI.
+  { id: "roll", symbol: "d:", label: "Roll", send: "Log", placeholder: "", chip: false },
+  { id: "table", symbol: "tbl:", label: "Table", send: "Log", placeholder: "", chip: false },
+  { id: "consequence", symbol: "=>", label: "Consequence", send: "Log", placeholder: "", chip: false }
 ];
 
 export interface PlayComposerHandle {
@@ -35,7 +39,8 @@ const PlayComposer = forwardRef<PlayComposerHandle, PlayComposerProps>(function 
 
   useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }), []);
 
-  // A typed prefix (`?`, `@`, `->`) overrides the chip, and the chip highlight follows it.
+  // A typed prefix (`?`, `@`, `->`, or a log-only `d:`/`tbl:`/`=>`) overrides the chip, and the
+  // chip highlight follows it.
   const effectiveMode = detectPrefixMode(text) ?? mode;
   const current = MODES.find((m) => m.id === effectiveMode)!;
   const busy = disabled || loading;
@@ -62,7 +67,7 @@ const PlayComposer = forwardRef<PlayComposerHandle, PlayComposerProps>(function 
   return (
     <div className={`play-composer${busy ? " play-composer-busy" : ""}`}>
       <div className="play-composer-chips">
-        {MODES.map((m) => (
+        {MODES.filter((m) => m.chip).map((m) => (
           <button
             key={m.id}
             className={`play-chip${effectiveMode === m.id ? " active" : ""}`}
