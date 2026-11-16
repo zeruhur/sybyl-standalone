@@ -6,6 +6,10 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 
 ## Unreleased
 
+## v0.18.0 - 2026-11-16
+
+Sybyl now follows Lonelog v1.7 and the v1.1 Dice and Cards add-ons.
+
 ### Added
 - The dice roller covers the whole Dice Notation add-on: penetrating dice (`2d6!p`), unique
   results (`2d10u`), critical marks (`cs`/`cf`), sorting (`s`/`sd`), dropping both ends at once
@@ -30,7 +34,6 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
   separate beats.
 - Meta notes such as `(note: …)`, `(todo: …)` and `(retcon: …)` are shown dimmed. Asides are no
   longer sent to the AI as part of the story; `(retcon: …)` and `(interp: …)` still are.
-
 - In parallel storylines, the AI is told whose storyline it is: the POV character declared on the
   storyline's first scene line (`T2-S1 *City archives* @(Jordan)`), so it knows who a bare `@` means.
 - The Custom Deck is saved with each note like the card deck, so its shuffle survives a restart. If
@@ -62,9 +65,8 @@ of its GitHub release (see "Releasing" in `docs/BUILDING.md`). Changes not yet r
 - `[Timer:]`, `[E:]` and `[#N:Name]` reference tags are highlighted. An old `[E:Name 2/6]` is read
   as a clock.
 - Updated for Lonelog v1.7 and the v1.1 Dice and Cards add-ons:
-  - Inserting a Toolkit card draw writes `draw=Qs` instead of a bare `Qs`, since a card now
-    always follows `=`. Cards and dice are highlighted on `tbl:` lines too (most draws are `tbl:`
-    now), and a word like "As" on a `d:` line is no longer mistaken for a card.
+  - Cards and dice are highlighted on `tbl:` lines too (most card draws are `tbl:` now). Since a
+    card now always follows `=`, a word like "As" on a `d:` line is no longer mistaken for a card.
   - Generate Adventure Seed writes a `tbl:` block (`gen:` was folded into `tbl:` in v1.7). Each
     line reads `Premise: -> …`, which marks it as a result rather than a table entry.
   - `tbl:` lines are highlighted in the editor like the other beat lines, and the AI sees them as
